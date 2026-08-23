@@ -391,6 +391,12 @@ func (app *SinglePageApp) layoutWSLNode(
 	cardWidth := gtx.Dp(unit.Dp(170))
 	gtx.Constraints.Min.X = cardWidth
 	gtx.Constraints.Max.X = cardWidth
+
+	isPowerButtonClicked := wslNodeState.BtnPower.Clicked(gtx) // consume the event
+	if isPowerButtonClicked {
+		fmt.Println("Clicked")
+	}
+
 	return layout.Inset{
 		Right: unit.Dp(8),
 	}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {

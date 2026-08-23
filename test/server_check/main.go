@@ -18,7 +18,7 @@ func main() {
 		}
 	}
 
-	out, err := server.GetRunningWSLNodes()
+	out, err := server.GetWSLNodes()
 	if err != nil {
 		return
 	}

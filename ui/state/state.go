@@ -37,6 +37,7 @@ type HostState struct {
 
 type WSLState struct {
 	Name     string
+	Status   string // Running or Stopped
 	BtnPower widget.Clickable
 }
 
@@ -82,7 +83,7 @@ func (host *HostState) FetchWSLNodesLoop(ctx context.Context) {
 			wg.Add(1)
 			go func(h *HostState, address string) {
 				defer wg.Done()
-				wslNodes, err := server.GetRunningWSLNodes()
+				wslNodes, err := server.GetWSLNodes()
 				h.Mu.Lock()
 				h.Wsls = make([]*WSLState, 0)
 				if err != nil {
@@ -93,7 +94,8 @@ func (host *HostState) FetchWSLNodesLoop(ctx context.Context) {
 
 				for _, wslNode := range wslNodes {
 					h.Wsls = append(h.Wsls, &WSLState{
-						Name: wslNode,
+						Name:   wslNode.Name,
+						Status: wslNode.Status,
 					})
 				}
 

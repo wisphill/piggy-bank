@@ -15,6 +15,11 @@ import (
 
 var timeRegex = regexp.MustCompile(`(?i)time[=<]\s*([\d.]+)\s*ms`)
 
+type wslNodeStatus struct {
+	Name   string
+	Status string
+}
+
 // resolve host to the ipv4
 func resolveHost(host string) string {
 	host = strings.TrimSpace(host)
@@ -40,7 +45,7 @@ func resolveHost(host string) string {
 
 func TurnOffServer() {
 	_, err := executor.ExecuteCommands(
-		`ssh Windows@yuu "shutdown /s /t 0"`,
+		`curl -s -X POST http://yuu:41020 -d "shutdown /s /t 0"`,
 	)
 	if err != nil {
 		fmt.Printf("Error while processing shutting down %v", err)
@@ -65,15 +70,16 @@ func TurnOnServer() error {
 	return nil
 }
 
-func GetRunningWSLNodes() ([]string, error) {
-	output, err := executor.ExecuteCommands(`curl -s -X POST http://yuu:41020 -d "wsl -l -v" | iconv -f UTF-16LE -t UTF-8 | sed '1d; s/^\* //'`)
+func GetWSLNodes() ([]*wslNodeStatus, error) {
+	output, err := executor.ExecuteCommands(
+		`curl -s -X POST http://yuu:41020 -d "wsl -l -v" | iconv -f UTF-16LE -t UTF-8 | sed '1d; s/^\* //'`)
 	if err != nil {
 		fmt.Printf("Error while getting the WSL nodes %v", err)
 		return nil, err
 
 	}
 
-	var runningWSLNodes []string
+	var wslNodes []*wslNodeStatus
 	for _, line := range strings.Split(output, "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" {
@@ -85,13 +91,31 @@ func GetRunningWSLNodes() ([]string, error) {
 			continue
 		}
 
-		// Ubuntu-24.04    Running    2
-		if fields[1] == "Running" {
-			runningWSLNodes = append(runningWSLNodes, fields[0])
-		}
+		wslNodes = append(wslNodes, &wslNodeStatus{
+			Name:   fields[0],
+			Status: fields[1],
+		})
 	}
 
-	return runningWSLNodes, nil
+	return wslNodes, nil
+}
+
+func TurnOffWSLNode(wslName string) {
+	_, err := executor.ExecuteCommands(
+		fmt.Sprintf(`curl -s -X POST http://yuu:41020 -d "wsl -t %s"`, wslName),
+	)
+	if err != nil {
+		fmt.Printf("Error while processing shutting down the WSL node %v", err)
+	}
+}
+
+func TurnOnWSLNode(wslName string) {
+	_, err := executor.ExecuteCommands(
+		fmt.Sprintf(`curl -s -X POST http://yuu:41020 -d "wsl -d %s"`, wslName),
+	)
+	if err != nil {
+		fmt.Printf("Error while processing shutting down the WSL node %v", err)
+	}
 }
 
 func PingOS(host string, timeout time.Duration) (bool, time.Duration) {
