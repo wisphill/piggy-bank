@@ -45,7 +45,7 @@ func resolveHost(host string) string {
 
 func TurnOffServer() {
 	_, err := executor.ExecuteCommands(
-		`curl -s -X POST http://yuu:41020 -d "shutdown /s /t 0"`,
+		`ssh Windows@yuu -p 2223 "shutdown /s /t 0"`,
 	)
 	if err != nil {
 		fmt.Printf("Error while processing shutting down %v", err)
@@ -72,7 +72,7 @@ func TurnOnServer() error {
 
 func GetWSLNodes() ([]*wslNodeStatus, error) {
 	output, err := executor.ExecuteCommands(
-		`curl -s -X POST http://yuu:41020 -d "wsl -l -v" | iconv -f UTF-16LE -t UTF-8 | sed '1d; s/^\* //'`)
+		`ssh Windows@yuu -p 2223 "wsl -l -v" | iconv -f UTF-16LE -t UTF-8 | sed '1d; s/^\* //'`)
 	if err != nil {
 		fmt.Printf("Error while getting the WSL nodes %v", err)
 		return nil, err
@@ -102,7 +102,7 @@ func GetWSLNodes() ([]*wslNodeStatus, error) {
 
 func TurnOffWSLNode(wslName string) {
 	_, err := executor.ExecuteCommands(
-		fmt.Sprintf(`curl -s -X POST http://yuu:41020 -d "wsl -t %s"`, wslName),
+		fmt.Sprintf(`ssh Windows@yuu -p 2223 "wsl -t %s"`, wslName),
 	)
 	if err != nil {
 		fmt.Printf("Error while processing shutting down the WSL node %v", err)
@@ -111,7 +111,7 @@ func TurnOffWSLNode(wslName string) {
 
 func TurnOnWSLNode(wslName string) {
 	_, err := executor.ExecuteCommands(
-		fmt.Sprintf(`curl -s -X POST http://yuu:41020 -d "wsl -d %s"`, wslName),
+		fmt.Sprintf(`ssh Windows@yuu -p 2223  "wsl -d %s"`, wslName),
 	)
 	if err != nil {
 		fmt.Printf("Error while processing shutting down the WSL node %v", err)

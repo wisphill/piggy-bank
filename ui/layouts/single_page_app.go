@@ -24,11 +24,12 @@ import (
 )
 
 type SinglePageApp struct {
-	host            *state.HostState
-	list            widget.List
-	shutdownIcon    *components.SVGRenderer
-	redShutdownIcon *components.SVGRenderer
-	serverIcon      *components.SVGRenderer
+	host              *state.HostState
+	list              widget.List
+	shutdownIcon      *components.SVGRenderer
+	redShutdownIcon   *components.SVGRenderer
+	greenShutdownIcon *components.SVGRenderer
+	serverIcon        *components.SVGRenderer
 
 	LogChan         chan string
 	DisplayedLogMsg string
@@ -47,6 +48,11 @@ func NewSinglePageApp(host *state.HostState) *SinglePageApp {
 		log.Fatalf("Error while loading SVG: %v", err)
 	}
 
+	greenShutdownIcon, err := components.LoadSVG(assets.ShutdownSVG, 24, 24, color.NRGBA{R: 40, G: 160, B: 60, A: 255})
+	if err != nil {
+		log.Fatalf("Error while loading SVG: %v", err)
+	}
+
 	serverIcon, err := components.LoadSVG(assets.ServerSVG, 40, 40, color.NRGBA{R: 0, G: 0, B: 0, A: 255})
 	if err != nil {
 		log.Fatalf("Error while loading SVG: %v", err)
@@ -58,12 +64,13 @@ func NewSinglePageApp(host *state.HostState) *SinglePageApp {
 				Axis: layout.Vertical,
 			},
 		},
-		host:            host,
-		shutdownIcon:    shutdownIcon,
-		redShutdownIcon: redShutdownIcon,
-		serverIcon:      serverIcon,
-		ShowLogBar:      false,
-		LogChan:         make(chan string),
+		host:              host,
+		shutdownIcon:      shutdownIcon,
+		redShutdownIcon:   redShutdownIcon,
+		greenShutdownIcon: greenShutdownIcon,
+		serverIcon:        serverIcon,
+		ShowLogBar:        false,
+		LogChan:           make(chan string),
 	}
 }
 
@@ -394,7 +401,12 @@ func (app *SinglePageApp) layoutWSLNode(
 
 	isPowerButtonClicked := wslNodeState.BtnPower.Clicked(gtx) // consume the event
 	if isPowerButtonClicked {
-		fmt.Println("Clicked")
+		fmt.Println("Status of the node ", wslNodeState.Status)
+		if wslNodeState.Status == "Running" {
+			go server.TurnOffWSLNode(wslNodeState.Name)
+		} else if wslNodeState.Status == "Stopped" {
+			go server.TurnOnWSLNode(wslNodeState.Name)
+		}
 	}
 
 	return layout.Inset{
@@ -441,7 +453,7 @@ func (app *SinglePageApp) layoutWSLNode(
 
 					// Status
 					layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-						lbl := material.Caption(th, "Running • WSL 2")
+						lbl := material.Caption(th, fmt.Sprintf(`%s • WSL 2`, wslNodeState.Status))
 						lbl.TextSize = unit.Sp(12)
 
 						return layout.Inset{
@@ -460,12 +472,17 @@ func (app *SinglePageApp) layoutWSLNode(
 									&wslNodeState.BtnPower,
 								)
 
+								// white
 								btn.Background = color.NRGBA{R: 231, G: 76, B: 60, A: 0}
+								buttonLayout := app.redShutdownIcon.Layout
+								if wslNodeState.Status == "Stopped" {
+									buttonLayout = app.greenShutdownIcon.Layout
+								}
 
 								return btn.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 									return layout.UniformInset(unit.Dp(5)).Layout(
 										gtx,
-										app.redShutdownIcon.Layout,
+										buttonLayout,
 									)
 								})
 							})
