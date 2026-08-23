@@ -161,7 +161,7 @@ func run(w *app.Window, host *state.HostState) error {
 
 	// background worker to check the hosts
 	go fetchServerUI(ctx, host, w)
-	go fetchWSLUI(ctx, w, host)
+	go fetchUI(ctx, w)
 	go startLogListener(w, singlePageApp)
 
 	// handle frame events and other events
@@ -210,24 +210,13 @@ func fetchServerUI(ctx context.Context, host *state.HostState, w *app.Window) {
 	}
 }
 
-func fetchWSLUI(ctx context.Context, w *app.Window, host *state.HostState) {
-	host.Mu.Lock()
-	currentWslList := len(host.Wsls)
-	host.Mu.Unlock()
+func fetchUI(ctx context.Context, w *app.Window) {
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		default:
-			time.Sleep(3 * time.Second)
-			host.Mu.Lock()
-			if currentWslList == len(host.Wsls) {
-				host.Mu.Unlock()
-				continue
-			}
-
-			currentWslList = len(host.Wsls)
-			host.Mu.Unlock()
+			time.Sleep(2 * time.Second)
 			w.Invalidate()
 		}
 	}
