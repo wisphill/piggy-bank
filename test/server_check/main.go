@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	server "piggy-bank/cmd/host"
 	"time"
@@ -18,7 +19,7 @@ func main() {
 		}
 	}
 
-	out, err := server.GetWSLNodes()
+	out, err := server.GetWSLNodes(context.Background())
 	if err != nil {
 		return
 	}

@@ -83,7 +83,7 @@ func (host *HostState) FetchWSLNodesLoop(ctx context.Context) {
 			wg.Add(1)
 			go func(h *HostState, address string) {
 				defer wg.Done()
-				wslNodes, err := server.GetWSLNodes()
+				wslNodes, err := server.GetWSLNodes(ctx)
 				h.Mu.Lock()
 				h.Wsls = make([]*WSLState, 0)
 				if err != nil {
@@ -121,10 +121,10 @@ func (host *HostState) HandleServerSignal(ctx context.Context) {
 
 			if signal == false {
 				fmt.Println("Turning off the server!")
-				server.TurnOffServer()
+				server.TurnOffServer(ctx)
 			} else {
 				fmt.Println("Turning on the server!")
-				server.TurnOnServer()
+				server.TurnOnServer(ctx)
 			}
 		}
 	}

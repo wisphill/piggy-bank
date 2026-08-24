@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"os"
@@ -43,8 +44,11 @@ func resolveHost(host string) string {
 	return host
 }
 
-func TurnOffServer() {
+func TurnOffServer(ctx context.Context) {
+	childCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
 	_, err := executor.ExecuteCommands(
+		childCtx,
 		`ssh Windows@yuu -p 2223 "shutdown /s /t 0"`,
 	)
 	if err != nil {
@@ -52,7 +56,9 @@ func TurnOffServer() {
 	}
 }
 
-func TurnOnServer() error {
+func TurnOnServer(ctx context.Context) error {
+	childCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
 	telegramBotToken := os.Getenv("TELEGRAM_BOT_TOKEN")
 	if telegramBotToken == "" {
 		return fmt.Errorf("Cannot find the telegram bot token. Configure at .piggy_bank/config")
@@ -61,7 +67,7 @@ func TurnOnServer() error {
 		`curl -s -X POST "https://api.telegram.org/bot%s/sendMessage" -d chat_id="-5115557042" -d text="/wake"`,
 		telegramBotToken,
 	)
-	_, err := executor.ExecuteCommands(command)
+	_, err := executor.ExecuteCommands(childCtx, command)
 	if err != nil {
 		fmt.Printf("Error while processing turning the server on %v", err)
 		return err
@@ -70,13 +76,16 @@ func TurnOnServer() error {
 	return nil
 }
 
-func GetWSLNodes() ([]*wslNodeStatus, error) {
+func GetWSLNodes(ctx context.Context) ([]*wslNodeStatus, error) {
+	childCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+
 	output, err := executor.ExecuteCommands(
+		childCtx,
 		`ssh Windows@yuu -p 2223 "wsl -l -v" | iconv -f UTF-16LE -t UTF-8 | sed '1d; s/^\* //'`)
 	if err != nil {
 		fmt.Printf("Error while getting the WSL nodes %v", err)
 		return nil, err
-
 	}
 
 	var wslNodes []*wslNodeStatus
@@ -100,8 +109,11 @@ func GetWSLNodes() ([]*wslNodeStatus, error) {
 	return wslNodes, nil
 }
 
-func TurnOffWSLNode(wslName string) {
+func TurnOffWSLNode(ctx context.Context, wslName string) {
+	childCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
 	_, err := executor.ExecuteCommands(
+		childCtx,
 		fmt.Sprintf(`ssh Windows@yuu -p 2223 "wsl -t %s"`, wslName),
 	)
 	if err != nil {
@@ -109,8 +121,11 @@ func TurnOffWSLNode(wslName string) {
 	}
 }
 
-func TurnOnWSLNode(wslName string) {
+func TurnOnWSLNode(ctx context.Context, wslName string) {
+	childCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
 	_, err := executor.ExecuteCommands(
+		childCtx,
 		fmt.Sprintf(`ssh Windows@yuu -p 2223  "wsl -d %s"`, wslName),
 	)
 	if err != nil {

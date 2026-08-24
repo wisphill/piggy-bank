@@ -1,6 +1,7 @@
 package layouts
 
 import (
+	"context"
 	"fmt"
 	"image"
 	"image/color"
@@ -403,9 +404,9 @@ func (app *SinglePageApp) layoutWSLNode(
 	if isPowerButtonClicked {
 		fmt.Println("Status of the node ", wslNodeState.Status)
 		if wslNodeState.Status == "Running" {
-			go server.TurnOffWSLNode(wslNodeState.Name)
+			go server.TurnOffWSLNode(context.Background(), wslNodeState.Name)
 		} else if wslNodeState.Status == "Stopped" {
-			go server.TurnOnWSLNode(wslNodeState.Name)
+			go server.TurnOnWSLNode(context.Background(), wslNodeState.Name)
 		}
 	}
 
@@ -496,7 +497,7 @@ func (app *SinglePageApp) layoutWSLNode(
 
 func (app *SinglePageApp) WaitForServerShutdown() {
 	app.LogChan <- "Server is shutting down!"
-	server.TurnOffServer()
+	server.TurnOffServer(context.Background())
 
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
@@ -522,7 +523,7 @@ func (app *SinglePageApp) WaitForServerShutdown() {
 
 func (app *SinglePageApp) WaitForServerStart() {
 	app.LogChan <- "Server is starting!"
-	err := server.TurnOnServer()
+	err := server.TurnOnServer(context.Background())
 	if err != nil {
 		app.LogChan <- fmt.Sprintf("Error while starting the server %v", err)
 		return

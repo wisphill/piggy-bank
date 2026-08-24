@@ -1,12 +1,14 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	executor "piggy-bank/cmd/execute_commands"
 )
 
 func main() {
 	out1, err := executor.ExecuteCommands(
+		context.Background(),
 		"echo === STEP 1 ===",
 		"uptime",
 		"echo === STEP 2 ===",
@@ -20,6 +22,6 @@ func main() {
 		"echo 'Shutting down service...'",
 		"echo 'Done!'",
 	}
-	out2, _ := executor.ExecuteCommands(cmds...)
+	out2, _ := executor.ExecuteCommands(context.Background(), cmds...)
 	fmt.Println(out2)
 }
