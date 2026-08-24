@@ -46,7 +46,10 @@ import "C"
 import (
 	"context"
 	"fmt"
+	"image"
+	"image/color"
 	"log"
+	"os"
 	"piggy-bank/assets/fonts"
 	"piggy-bank/config"
 	"piggy-bank/ui/layouts"
@@ -59,7 +62,10 @@ import (
 	"gioui.org/io/system"
 	"gioui.org/layout"
 	"gioui.org/op"
+	"gioui.org/op/clip"
+	"gioui.org/op/paint"
 	"gioui.org/unit"
+	"gioui.org/widget"
 	"gioui.org/widget/material"
 
 	"github.com/gogpu/systray"
@@ -68,6 +74,10 @@ import (
 var (
 	winMutex  sync.Mutex
 	activeWin *app.Window
+)
+
+const (
+	APP_TITLE = "Piggy Bank"
 )
 
 func init() {
@@ -117,7 +127,7 @@ func openGioWindow(host *state.HostState) {
 	// if not, create a new window
 	w := new(app.Window)
 	w.Option(
-		app.Title("Piggy Bank"),
+		app.Decorated(false),
 		app.Size(unit.Dp(820), unit.Dp(404)),
 		app.MinSize(unit.Dp(820), unit.Dp(404)),
 		app.MaxSize(unit.Dp(820), unit.Dp(404)),
@@ -144,6 +154,8 @@ func openGioWindow(host *state.HostState) {
 func run(w *app.Window, host *state.HostState) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
+	var quitButton widget.Clickable
 
 	th := material.NewTheme()
 	th.Shaper = fonts.NewShaper()
@@ -175,14 +187,72 @@ func run(w *app.Window, host *state.HostState) error {
 			gtx := app.NewContext(&ops, e)
 
 			// set the layout
-			layout.UniformInset(unit.Dp(0)).Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+			layout.Inset{
+				Top: unit.Dp(32),
+			}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 				return singlePageApp.Layout(gtx, th)
 			})
+
+			if quitButton.Clicked(gtx) {
+				os.Exit(0)
+			}
+
+			// 3. Draw the custom black titlebar
+			drawCustomTitleBar(gtx, th, &quitButton)
 
 			// draw frame to the gpu
 			e.Frame(gtx.Ops)
 		}
 	}
+}
+
+func drawCustomTitleBar(gtx layout.Context, th *material.Theme, quitBtn *widget.Clickable) {
+	height := gtx.Dp(unit.Dp(32))
+	bounds := image.Rect(0, 0, gtx.Constraints.Max.X, height)
+
+	// 1. Vẽ nền đen cho title bar
+	area := clip.Rect(bounds).Push(gtx.Ops)
+	black := color.NRGBA{R: 0, G: 0, B: 0, A: 255}
+	paint.ColorOp{Color: black}.Add(gtx.Ops)
+	paint.PaintOp{}.Add(gtx.Ops)
+
+	// Cho phép kéo cửa sổ từ phần nền trống
+	system.ActionInputOp(system.ActionMove).Add(gtx.Ops)
+	area.Pop()
+
+	// 2. Dùng Stack để quản lý vị trí các phần tử
+	layout.Stack{}.Layout(gtx,
+		// Tiêu đề căn giữa tuyệt đối
+		layout.Stacked(func(gtx layout.Context) layout.Dimensions {
+			// Ép vùng chứa tiêu đề rộng bằng toàn bộ màn hình để layout.Center tính đúng điểm giữa
+			gtx.Constraints.Min.X = gtx.Constraints.Max.X
+			gtx.Constraints.Min.Y = height
+			gtx.Constraints.Max.Y = height
+
+			return layout.Center.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+				label := material.Body1(th, APP_TITLE)
+				label.TextSize = unit.Sp(14)
+				label.Color = color.NRGBA{R: 255, G: 255, B: 255, A: 255}
+				return label.Layout(gtx)
+			})
+		}),
+		// Red quit button
+		layout.Stacked(func(gtx layout.Context) layout.Dimensions {
+			return layout.Inset{
+				Top:  unit.Dp(10),
+				Left: unit.Dp(10),
+			}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+				size := gtx.Dp(unit.Dp(12))
+				gtx.Constraints.Min = image.Point{X: size, Y: size}
+				gtx.Constraints.Max = gtx.Constraints.Min
+
+				btn := material.Button(th, quitBtn, "")
+				btn.Background = color.NRGBA{R: 255, G: 95, B: 86, A: 255} // Màu đỏ macOS
+				btn.CornerRadius = unit.Dp(6)                              // Bo tròn hoàn toàn
+				return btn.Layout(gtx)
+			})
+		}),
+	)
 }
 
 func fetchServerUI(ctx context.Context, host *state.HostState, w *app.Window) {
