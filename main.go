@@ -212,8 +212,8 @@ func drawCustomTitleBar(gtx layout.Context, th *material.Theme, quitBtn *widget.
 
 	// 1. Vẽ nền đen cho title bar
 	area := clip.Rect(bounds).Push(gtx.Ops)
-	black := color.NRGBA{R: 0, G: 0, B: 0, A: 255}
-	paint.ColorOp{Color: black}.Add(gtx.Ops)
+	darkGray := color.NRGBA{R: 44, G: 47, B: 51, A: 255}
+	paint.ColorOp{Color: darkGray}.Add(gtx.Ops)
 	paint.PaintOp{}.Add(gtx.Ops)
 
 	// Cho phép kéo cửa sổ từ phần nền trống
