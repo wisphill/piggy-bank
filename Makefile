@@ -17,7 +17,7 @@ app: build
 	mkdir -p $(APP_BUNDLE_MACOS)
 	mkdir -p $(APP_BUNDLE)/Contents
 	cp $(BINARY) $(APP_BUNDLE_MACOS)/$(APP_NAME)
-	cp bundle/Info.plist $(APP_BUNDLE)/Contents/Info.plist
+	cp -r bundle/Contents $(APP_BUNDLE)/Contents
 	@echo "✓ PiggyBank built successfully"
 
 install: app
