@@ -410,33 +410,45 @@ func (app *SinglePageApp) layoutWSLNode(
 		}
 	}
 
-	return layout.Inset{
-		Right: unit.Dp(8),
-	}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-		return widget.Border{
-			Color: color.NRGBA{
-				R: 220,
-				G: 220,
-				B: 220,
-				A: 255,
-			},
-			Width:        unit.Dp(1),
-			CornerRadius: unit.Dp(6),
-		}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+	insideCardContent := func(gtx layout.Context) layout.Dimensions {
+		return layout.Flex{
+			Axis: layout.Horizontal,
+		}.Layout(
+			gtx,
+			// D. Power Button
+			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+				return layout.Inset{
+					Top:   unit.Dp(6),
+					Right: unit.Dp(6),
+				}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+					return layout.E.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+						btn := material.ButtonLayout(
+							th,
+							&wslNodeState.BtnPower,
+						)
 
-			return layout.Inset{
-				Top:    unit.Dp(8),
-				Bottom: unit.Dp(8),
-				Left:   unit.Dp(12),
-				Right:  unit.Dp(12),
-			}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+						// white
+						btn.Background = color.NRGBA{R: 231, G: 76, B: 60, A: 0}
+						buttonLayout := app.redShutdownIcon.Layout
+						if wslNodeState.Status == "Stopped" {
+							buttonLayout = app.greenShutdownIcon.Layout
+						}
 
+						return btn.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+							return layout.UniformInset(unit.Dp(5)).Layout(
+								gtx,
+								buttonLayout,
+							)
+						})
+					})
+				})
+			}),
+
+			// Name
+			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 				return layout.Flex{
 					Axis: layout.Vertical,
-				}.Layout(
-					gtx,
-
-					// Name
+				}.Layout(gtx,
 					layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 						return layout.Flex{
 							Axis: layout.Horizontal,
@@ -451,7 +463,6 @@ func (app *SinglePageApp) layoutWSLNode(
 							}),
 						)
 					}),
-
 					// Status
 					layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 						lbl := material.Caption(th, fmt.Sprintf(`%s • WSL 2`, wslNodeState.Status))
@@ -461,35 +472,31 @@ func (app *SinglePageApp) layoutWSLNode(
 							Top: unit.Dp(0),
 						}.Layout(gtx, lbl.Layout)
 					}),
-
-					// D. Power Button
-					layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-						return layout.Inset{
-							Top: unit.Dp(6),
-						}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-							return layout.E.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-								btn := material.ButtonLayout(
-									th,
-									&wslNodeState.BtnPower,
-								)
-
-								// white
-								btn.Background = color.NRGBA{R: 231, G: 76, B: 60, A: 0}
-								buttonLayout := app.redShutdownIcon.Layout
-								if wslNodeState.Status == "Stopped" {
-									buttonLayout = app.greenShutdownIcon.Layout
-								}
-
-								return btn.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-									return layout.UniformInset(unit.Dp(5)).Layout(
-										gtx,
-										buttonLayout,
-									)
-								})
-							})
-						})
-					}),
 				)
+			}),
+		)
+	}
+
+	return layout.Inset{
+		Right: unit.Dp(8),
+	}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+		return widget.Border{
+			Color: color.NRGBA{
+				R: 220,
+				G: 220,
+				B: 220,
+				A: 255,
+			},
+			Width:        unit.Dp(1),
+			CornerRadius: unit.Dp(6),
+		}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+			return layout.Inset{
+				Top:    unit.Dp(15),
+				Bottom: unit.Dp(15),
+				Left:   unit.Dp(12),
+				Right:  unit.Dp(12),
+			}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+				return insideCardContent(gtx)
 			})
 		})
 	})
