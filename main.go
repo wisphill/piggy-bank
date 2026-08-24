@@ -49,7 +49,6 @@ import (
 	"image"
 	"image/color"
 	"log"
-	"os"
 	"piggy-bank/assets/fonts"
 	"piggy-bank/config"
 	"piggy-bank/ui/layouts"
@@ -98,8 +97,6 @@ func main() {
 		ServerSignal: make(chan bool),
 	}
 
-	go host.PingToServerLoop(appCtx)
-	go host.FetchWSLNodesLoop(appCtx)
 	go host.HandleServerSignal(appCtx)
 
 	tray := systray.New()
@@ -107,7 +104,10 @@ func main() {
 		openGioWindow(host)
 	})
 
-	app.Main()
+	// Chạy vòng lặp systray bên trong goroutine này
+	if err := tray.Run(); err != nil {
+		fmt.Println("Error of systray:", err)
+	}
 }
 
 // openGioWindow bring the Gio window to the front
@@ -194,7 +194,7 @@ func run(w *app.Window, host *state.HostState) error {
 			})
 
 			if quitButton.Clicked(gtx) {
-				os.Exit(0)
+				w.Perform(system.ActionClose)
 			}
 
 			// 3. Draw the custom black titlebar

@@ -2,12 +2,10 @@ package uitray
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"os"
 	"piggy-bank/platform/darwin"
 	"piggy-bank/ui/state"
-	"time"
 
 	"github.com/gogpu/systray"
 
@@ -21,41 +19,7 @@ var iconBytes []byte
 
 func SetupTray(ctx context.Context, host *state.HostState, tray *systray.SystemTray, onClickAdmin func()) {
 	menu := systray.NewMenu()
-
 	menu.Add("Open", onClickAdmin)
-	serverItem := menu.Add("Server is loading", func() {
-		host.Mu.Lock()
-		isOnline := host.IsOnline
-		host.Mu.Unlock()
-
-		if isOnline {
-			host.ServerSignal <- false
-		} else {
-			host.ServerSignal <- true
-			fmt.Println("Clicked to turn on the server nowwww")
-		}
-	})
-
-	go func() {
-		ticker := time.NewTicker(time.Second)
-		defer ticker.Stop()
-
-		for _ = range ticker.C {
-			select {
-			case <-ctx.Done():
-				return
-			default:
-				host.Mu.Lock()
-				isOnline := host.IsOnline
-				host.Mu.Unlock()
-				if isOnline {
-					serverItem.SetLabel("Turn off server")
-				} else {
-					serverItem.SetLabel("Turn on server")
-				}
-			}
-		}
-	}()
 
 	isAutoStart := darwin.IsStartAtLoginEnabled()
 	var autoStartItem *systray.MenuItem
