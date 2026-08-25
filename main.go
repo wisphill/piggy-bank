@@ -172,6 +172,8 @@ func run(w *app.Window, host *state.HostState) error {
 	singlePageApp := layouts.NewSinglePageApp(host)
 
 	// background worker to check the hosts
+	go host.PingToServerLoop(ctx)
+	go host.FetchWSLNodesLoop(ctx)
 	go fetchServerUI(ctx, host, w)
 	go fetchUI(ctx, w)
 	go startLogListener(w, singlePageApp)
