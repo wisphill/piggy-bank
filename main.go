@@ -53,6 +53,7 @@ import (
 	"piggy-bank/config"
 	"piggy-bank/ui/layouts"
 	"piggy-bank/ui/state"
+	"piggy-bank/ui/theme"
 	uitray "piggy-bank/ui/tray"
 	"sync"
 	"time"
@@ -62,7 +63,6 @@ import (
 	"gioui.org/layout"
 	"gioui.org/op"
 	"gioui.org/op/clip"
-	"gioui.org/op/paint"
 	"gioui.org/unit"
 	"gioui.org/widget"
 	"gioui.org/widget/material"
@@ -73,10 +73,6 @@ import (
 var (
 	winMutex  sync.Mutex
 	activeWin *app.Window
-)
-
-const (
-	APP_TITLE = "Piggy Bank"
 )
 
 func init() {
@@ -92,8 +88,10 @@ func main() {
 	appCtx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	host := &state.HostState{
-		Name:         "Main Server (Yuu, Kubernetes, WSL, Window Server)",
+		Name:         "Main Server",
+		Description:  "Yuu · Kubernetes · WSL · Windows Server",
 		Address:      "Yuu.local",
+		Activity:     &state.ActivityLog{},
 		ServerSignal: make(chan bool),
 	}
 
@@ -128,9 +126,9 @@ func openGioWindow(host *state.HostState) {
 	w := new(app.Window)
 	w.Option(
 		app.Decorated(false),
-		app.Size(unit.Dp(820), unit.Dp(404)),
-		app.MinSize(unit.Dp(820), unit.Dp(404)),
-		app.MaxSize(unit.Dp(820), unit.Dp(404)),
+		app.Size(unit.Dp(960), unit.Dp(620)),
+		app.MinSize(unit.Dp(960), unit.Dp(620)),
+		app.MaxSize(unit.Dp(960), unit.Dp(620)),
 	)
 
 	activeWin = w
@@ -157,8 +155,7 @@ func run(w *app.Window, host *state.HostState) error {
 
 	var quitButton widget.Clickable
 
-	th := material.NewTheme()
-	th.Shaper = fonts.NewShaper()
+	th := theme.New(fonts.NewShaper())
 	var ops op.Ops
 
 	if err := config.EnsureConfig(); err != nil {
@@ -169,14 +166,15 @@ func run(w *app.Window, host *state.HostState) error {
 		log.Fatal(err)
 	}
 
-	singlePageApp := layouts.NewSinglePageApp(host)
+	shell := layouts.NewAppShell(host)
+	host.Activity.SetInvalidator(w.Invalidate)
+	defer host.Activity.SetInvalidator(nil)
 
 	// background worker to check the hosts
 	go host.PingToServerLoop(ctx)
 	go host.FetchWSLNodesLoop(ctx)
 	go fetchServerUI(ctx, host, w)
 	go fetchUI(ctx, w)
-	go startLogListener(w, singlePageApp)
 
 	// handle frame events and other events
 	for {
@@ -188,18 +186,13 @@ func run(w *app.Window, host *state.HostState) error {
 		case app.FrameEvent:
 			gtx := app.NewContext(&ops, e)
 
-			// set the layout
-			layout.Inset{
-				Top: unit.Dp(32),
-			}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-				return singlePageApp.Layout(gtx, th)
-			})
+			// the sidebar and content extend under the transparent title bar
+			shell.Layout(gtx, th)
 
 			if quitButton.Clicked(gtx) {
 				w.Perform(system.ActionClose)
 			}
 
-			// 3. Draw the custom black titlebar
 			drawCustomTitleBar(gtx, th, &quitButton)
 
 			// draw frame to the gpu
@@ -212,32 +205,13 @@ func drawCustomTitleBar(gtx layout.Context, th *material.Theme, quitBtn *widget.
 	height := gtx.Dp(unit.Dp(32))
 	bounds := image.Rect(0, 0, gtx.Constraints.Max.X, height)
 
-	// 1. Vẽ nền đen cho title bar
-	area := clip.Rect(bounds).Push(gtx.Ops)
-	darkGray := color.NRGBA{R: 44, G: 47, B: 51, A: 255}
-	paint.ColorOp{Color: darkGray}.Add(gtx.Ops)
-	paint.PaintOp{}.Add(gtx.Ops)
-
 	// Cho phép kéo cửa sổ từ phần nền trống
+	area := clip.Rect(bounds).Push(gtx.Ops)
 	system.ActionInputOp(system.ActionMove).Add(gtx.Ops)
 	area.Pop()
 
 	// 2. Dùng Stack để quản lý vị trí các phần tử
 	layout.Stack{}.Layout(gtx,
-		// Tiêu đề căn giữa tuyệt đối
-		layout.Stacked(func(gtx layout.Context) layout.Dimensions {
-			// Ép vùng chứa tiêu đề rộng bằng toàn bộ màn hình để layout.Center tính đúng điểm giữa
-			gtx.Constraints.Min.X = gtx.Constraints.Max.X
-			gtx.Constraints.Min.Y = height
-			gtx.Constraints.Max.Y = height
-
-			return layout.Center.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-				label := material.Body1(th, APP_TITLE)
-				label.TextSize = unit.Sp(14)
-				label.Color = color.NRGBA{R: 255, G: 255, B: 255, A: 255}
-				return label.Layout(gtx)
-			})
-		}),
 		// Red quit button
 		layout.Stacked(func(gtx layout.Context) layout.Dimensions {
 			return layout.Inset{
@@ -292,25 +266,4 @@ func fetchUI(ctx context.Context, w *app.Window) {
 			w.Invalidate()
 		}
 	}
-}
-
-// a listener channel to handle the logs on the UI
-func startLogListener(window *app.Window, pageApp *layouts.SinglePageApp) {
-	go func() {
-		for msg := range pageApp.LogChan {
-			if msg == "" {
-				pageApp.ShowLogBar = false
-			} else {
-				pageApp.DisplayedLogMsg = msg
-				pageApp.ShowLogBar = true
-			}
-
-			window.Invalidate()
-		}
-
-		pageApp.ShowLogBar = false
-		if window != nil {
-			window.Invalidate()
-		}
-	}()
 }

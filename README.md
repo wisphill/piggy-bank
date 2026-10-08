@@ -32,11 +32,17 @@ piggy-bank/
 │       └── launch_agent.go              # Login item / startup registration
 ├── ui/                                  # UI, state, and tray components
 │   ├── components/
-│   │   └── monitor.go                   # UI monitor widgets
+│   │   ├── icons.go                     # Material Design icons
+│   │   └── widgets.go                   # Buttons, nav items, cards, status halo, toast
 │   ├── layouts/
-│   │   └── single_page_app.go           # Main app layout
+│   │   └── app_shell.go                 # Sidebar + page routing (LocalSend-style)
+│   ├── pages/                           # Host, WSL, Settings, History, About pages
 │   ├── state/
+│   │   ├── activity.go                  # Activity history and toast messages
+│   │   ├── power.go                     # Host and WSL power actions
 │   │   └── state.go                     # Host and WSL state management
+│   ├── theme/
+│   │   └── theme.go                     # Color palette and Gio theme
 │   └── tray/
 │       └── tray_icon.go                 # Systray menu and status toggles
 ├── test/                                # Utility test programs
