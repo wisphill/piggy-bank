@@ -6,6 +6,7 @@ import (
 
 	"gioui.org/font"
 	"gioui.org/layout"
+	"gioui.org/text"
 	"gioui.org/unit"
 	"gioui.org/widget"
 	"gioui.org/widget/material"
@@ -66,7 +67,13 @@ func emptyState(gtx layout.Context, th *material.Theme, ic *widget.Icon, title, 
 			layout.Rigid(layout.Spacer{Height: unit.Dp(12)}.Layout),
 			layout.Rigid(components.Text(th, 16, font.Medium, theme.Text, title).Layout),
 			layout.Rigid(layout.Spacer{Height: unit.Dp(4)}.Layout),
-			layout.Rigid(components.Text(th, 13, font.Normal, theme.TextMuted, hint).Layout),
+			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+				gtx.Constraints.Max.X = min(gtx.Constraints.Max.X, gtx.Dp(440))
+				lbl := components.Text(th, 13, font.Normal, theme.TextMuted, hint)
+				lbl.Alignment = text.Middle
+				lbl.MaxLines = 3
+				return lbl.Layout(gtx)
+			}),
 		)
 	})
 }

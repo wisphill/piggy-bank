@@ -20,7 +20,11 @@ func (host *HostState) Shutdown(ctx context.Context) {
 	defer host.endBusy()
 
 	host.Activity.Log("Server is shutting down!")
-	server.TurnOffServer(ctx)
+	if err := server.TurnOffServer(ctx); err != nil {
+		host.Activity.Log(fmt.Sprintf("Could not shut down the server: %v", err))
+		host.Activity.HideToastAfter(5 * time.Second)
+		return
+	}
 
 	if host.waitForOnline(ctx, false, "Server is shutting down! Checking the server") {
 		host.Activity.Log("Server is shut down!")
@@ -48,7 +52,13 @@ func (host *HostState) PowerOn(ctx context.Context) {
 	host.Activity.HideToastAfter(2 * time.Second)
 }
 
+// waitForOnline pings the same address as PingToServerLoop so the result
+// agrees with the status shown in the UI.
 func (host *HostState) waitForOnline(ctx context.Context, want bool, status string) bool {
+	host.Mu.Lock()
+	addr := host.Address
+	host.Mu.Unlock()
+
 	ticker := time.NewTicker(powerPollInterval)
 	defer ticker.Stop()
 	deadline := time.After(powerWaitTimeout)
@@ -62,7 +72,10 @@ func (host *HostState) waitForOnline(ctx context.Context, want bool, status stri
 			return false
 		case <-ticker.C:
 			host.Activity.Status(status)
-			if isOnline, _ := server.PingOS("yuu", time.Second); isOnline == want {
+			if isOnline, _ := server.PingOS(addr, 1500*time.Millisecond); isOnline == want {
+				host.Mu.Lock()
+				host.IsOnline = isOnline
+				host.Mu.Unlock()
 				return true
 			}
 		}
@@ -108,12 +121,18 @@ func (host *HostState) ToggleWSL(ctx context.Context, node *WSLState) {
 	switch status {
 	case "Running":
 		host.Activity.Log(fmt.Sprintf("Stopping WSL instance %s…", name))
-		server.TurnOffWSLNode(ctx, name)
-		host.Activity.Log(fmt.Sprintf("Stop command sent to %s", name))
+		if err := server.TurnOffWSLNode(ctx, name); err != nil {
+			host.Activity.Log(fmt.Sprintf("Could not stop %s: %v", name, err))
+		} else {
+			host.Activity.Log(fmt.Sprintf("Stop command sent to %s", name))
+		}
 	case "Stopped":
 		host.Activity.Log(fmt.Sprintf("Starting WSL instance %s…", name))
-		server.TurnOnWSLNode(ctx, name)
-		host.Activity.Log(fmt.Sprintf("Start command sent to %s", name))
+		if err := server.TurnOnWSLNode(ctx, name); err != nil {
+			host.Activity.Log(fmt.Sprintf("Could not start %s: %v", name, err))
+		} else {
+			host.Activity.Log(fmt.Sprintf("Start command sent to %s", name))
+		}
 	}
 	host.Activity.HideToastAfter(2 * time.Second)
 }

@@ -34,6 +34,9 @@ type HostState struct {
 	Busy        bool // a power action is in progress
 	BusyAction  HostAction
 	BusyLabel   string // e.g. "Shutting down…"
+	SSHChecked  bool   // at least one SSH attempt has finished
+	SSHReady    bool   // the last SSH attempt succeeded
+	SSHError    string // why the last SSH attempt failed
 
 	Activity     *ActivityLog
 	ServerSignal chan bool
@@ -62,6 +65,53 @@ func (host *HostState) WSLSnapshot() []WSLSnapshot {
 		out[i] = WSLSnapshot{Node: n, Name: n.Name, Status: n.Status, Pending: n.Pending}
 	}
 	return out
+}
+
+// refreshWSL lists WSL instances over SSH and records whether SSH is usable.
+func (host *HostState) refreshWSL(ctx context.Context) {
+	wslNodes, err := server.GetWSLNodes(ctx)
+	if ctx.Err() != nil {
+		return
+	}
+
+	host.Mu.Lock()
+	wasReady, wasChecked, online := host.SSHReady, host.SSHChecked, host.IsOnline
+	host.SSHChecked = true
+	host.SSHReady = err == nil
+
+	if err != nil {
+		host.SSHError = err.Error()
+		host.Wsls = nil
+		host.Mu.Unlock()
+		fmt.Println("Error while getting the WSL nodes:", err)
+		if online && (wasReady || !wasChecked) {
+			host.Activity.Log("SSH is not reachable: " + err.Error())
+		}
+		return
+	}
+
+	host.SSHError = ""
+	// reuse existing entries so their buttons keep click state
+	existing := make(map[string]*WSLState, len(host.Wsls))
+	for _, n := range host.Wsls {
+		existing[n.Name] = n
+	}
+	next := make([]*WSLState, 0, len(wslNodes))
+	for _, wslNode := range wslNodes {
+		n, ok := existing[wslNode.Name]
+		if !ok {
+			n = &WSLState{Name: wslNode.Name}
+		}
+		n.Status = wslNode.Status
+		next = append(next, n)
+	}
+	host.Wsls = next
+	host.Mu.Unlock()
+
+	if wasChecked && !wasReady {
+		host.Activity.Log("SSH connected")
+		host.Activity.HideToastAfter(2 * time.Second)
+	}
 }
 
 func (host *HostState) PingToServerLoop(ctx context.Context) {
@@ -98,40 +148,7 @@ func (host *HostState) FetchWSLNodesLoop(ctx context.Context) {
 			fmt.Println("yeah, return, no more loops!")
 			return
 		default:
-			var wg sync.WaitGroup
-			host.Mu.Lock()
-			addr := host.Address
-			host.Mu.Unlock()
-
-			wg.Add(1)
-			go func(h *HostState, address string) {
-				defer wg.Done()
-				wslNodes, err := server.GetWSLNodes(ctx)
-				h.Mu.Lock()
-				defer h.Mu.Unlock()
-				if err != nil {
-					fmt.Println("Error while getting the WSL nodes")
-					h.Wsls = nil
-					return
-				}
-
-				// reuse existing entries so their buttons keep click state
-				existing := make(map[string]*WSLState, len(h.Wsls))
-				for _, n := range h.Wsls {
-					existing[n.Name] = n
-				}
-				next := make([]*WSLState, 0, len(wslNodes))
-				for _, wslNode := range wslNodes {
-					n, ok := existing[wslNode.Name]
-					if !ok {
-						n = &WSLState{Name: wslNode.Name}
-					}
-					n.Status = wslNode.Status
-					next = append(next, n)
-				}
-				h.Wsls = next
-			}(host, addr)
-			wg.Wait()
+			host.refreshWSL(ctx)
 			time.Sleep(3 * time.Second)
 		}
 	}

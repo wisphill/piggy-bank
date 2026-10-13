@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"net"
@@ -12,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf16"
 )
 
 var timeRegex = regexp.MustCompile(`(?i)time[=<]\s*([\d.]+)\s*ms`)
@@ -44,16 +46,54 @@ func resolveHost(host string) string {
 	return host
 }
 
-func TurnOffServer(ctx context.Context) {
+// SSH is only reachable through Tailscale (yuu), not the LAN name (Yuu.local).
+const (
+	sshTarget = "Windows@yuu"
+	sshPort   = "2223"
+)
+
+// runSSH runs a command on the Windows host. Failures carry ssh's stderr so a
+// connection error is never mistaken for empty output.
+func runSSH(ctx context.Context, remote string) ([]byte, error) {
+	cmd := exec.CommandContext(ctx, "ssh",
+		"-o", "BatchMode=yes",
+		"-o", "ConnectTimeout=5",
+		"-p", sshPort, sshTarget, remote,
+	)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+
+	out, err := cmd.Output()
+	if err != nil {
+		if ctx.Err() != nil {
+			return nil, fmt.Errorf("ssh %s: %w", sshTarget, ctx.Err())
+		}
+		msg := strings.TrimSpace(decodeWindowsOutput(stderr.Bytes()))
+		if msg == "" {
+			msg = err.Error()
+		}
+		return nil, fmt.Errorf("ssh %s: %s", sshTarget, msg)
+	}
+	return out, nil
+}
+
+// decodeWindowsOutput handles wsl.exe, which writes UTF-16LE instead of UTF-8.
+func decodeWindowsOutput(b []byte) string {
+	if len(b) >= 2 && b[1] == 0 {
+		u := make([]uint16, len(b)/2)
+		for i := range u {
+			u[i] = uint16(b[2*i]) | uint16(b[2*i+1])<<8
+		}
+		b = []byte(string(utf16.Decode(u)))
+	}
+	return strings.TrimPrefix(string(b), "\ufeff")
+}
+
+func TurnOffServer(ctx context.Context) error {
 	childCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
-	_, err := executor.ExecuteCommands(
-		childCtx,
-		`ssh Windows@yuu -p 2223 "shutdown /s /t 0"`,
-	)
-	if err != nil {
-		fmt.Printf("Error while processing shutting down %v", err)
-	}
+	_, err := runSSH(childCtx, "shutdown /s /t 0")
+	return err
 }
 
 func TurnOnServer(ctx context.Context) error {
@@ -80,18 +120,16 @@ func GetWSLNodes(ctx context.Context) ([]*wslNodeStatus, error) {
 	childCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 
-	output, err := executor.ExecuteCommands(
-		childCtx,
-		`ssh Windows@yuu -p 2223 "wsl -l -v" | iconv -f UTF-16LE -t UTF-8 | sed '1d; s/^\* //'`)
+	output, err := runSSH(childCtx, "wsl -l -v")
 	if err != nil {
-		fmt.Printf("Error while getting the WSL nodes %v", err)
 		return nil, err
 	}
 
+	// NAME  STATE  VERSION header, then one row per distro; "*" marks the default
 	var wslNodes []*wslNodeStatus
-	for _, line := range strings.Split(output, "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
+	for _, line := range strings.Split(decodeWindowsOutput(output), "\n") {
+		line = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(line), "*"))
+		if line == "" || strings.HasPrefix(line, "NAME") {
 			continue
 		}
 
@@ -109,28 +147,18 @@ func GetWSLNodes(ctx context.Context) ([]*wslNodeStatus, error) {
 	return wslNodes, nil
 }
 
-func TurnOffWSLNode(ctx context.Context, wslName string) {
+func TurnOffWSLNode(ctx context.Context, wslName string) error {
 	childCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
-	_, err := executor.ExecuteCommands(
-		childCtx,
-		fmt.Sprintf(`ssh Windows@yuu -p 2223 "wsl -t %s"`, wslName),
-	)
-	if err != nil {
-		fmt.Printf("Error while processing shutting down the WSL node %v", err)
-	}
+	_, err := runSSH(childCtx, fmt.Sprintf("wsl -t %s", wslName))
+	return err
 }
 
-func TurnOnWSLNode(ctx context.Context, wslName string) {
+func TurnOnWSLNode(ctx context.Context, wslName string) error {
 	childCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
-	_, err := executor.ExecuteCommands(
-		childCtx,
-		fmt.Sprintf(`ssh Windows@yuu -p 2223  "wsl -d %s"`, wslName),
-	)
-	if err != nil {
-		fmt.Printf("Error while processing shutting down the WSL node %v", err)
-	}
+	_, err := runSSH(childCtx, fmt.Sprintf("wsl -d %s", wslName))
+	return err
 }
 
 func PingOS(host string, timeout time.Duration) (bool, time.Duration) {

@@ -49,6 +49,7 @@ func (p *HostPage) Layout(gtx layout.Context, th *material.Theme) layout.Dimensi
 	name, desc, address := p.host.Name, p.host.Description, p.host.Address
 	online, rtt := p.host.IsOnline, p.host.PingRTT
 	busy, busyAction, busyLabel := p.host.Busy, p.host.BusyAction, p.host.BusyLabel
+	sshDown := p.host.SSHChecked && !p.host.SSHReady
 	p.host.Mu.Unlock()
 
 	if p.powerBtn.Clicked(gtx) && !busy {
@@ -66,6 +67,8 @@ func (p *HostPage) Layout(gtx layout.Context, th *material.Theme) layout.Dimensi
 		haloColor, hint = theme.Danger, ""
 	case busy:
 		haloColor, hint = theme.PowerOn, ""
+	case online && sshDown:
+		haloColor, hint = theme.Danger, "Online, but SSH is not reachable yet, so shutdown may fail"
 	case online:
 		haloColor, hint = theme.Danger, "Click the icon to shut down the server"
 	}

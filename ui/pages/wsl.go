@@ -34,6 +34,7 @@ func (p *WSLPage) Layout(gtx layout.Context, th *material.Theme) layout.Dimensio
 	nodes := p.host.WSLSnapshot()
 	p.host.Mu.Lock()
 	online, address := p.host.IsOnline, p.host.Address
+	sshChecked, sshReady, sshErr := p.host.SSHChecked, p.host.SSHReady, p.host.SSHError
 	p.host.Mu.Unlock()
 
 	for _, n := range nodes {
@@ -61,10 +62,15 @@ func (p *WSLPage) Layout(gtx layout.Context, th *material.Theme) layout.Dimensio
 			layout.Rigid(layout.Spacer{Height: unit.Dp(20)}.Layout),
 			layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
 				if len(nodes) == 0 {
-					if !online {
+					switch {
+					case !online:
 						return emptyState(gtx, th, components.IconWSL, "Host is offline", "Turn on the host to see its WSL instances.")
+					case !sshChecked:
+						return emptyState(gtx, th, components.IconWSL, "Connecting over SSH…", "Fetching WSL instances from the host.")
+					case !sshReady:
+						return emptyState(gtx, th, components.IconWSL, "SSH is not reachable yet", sshErr)
 					}
-					return emptyState(gtx, th, components.IconWSL, "No WSL instances found", "Instances will appear here once they are detected.")
+					return emptyState(gtx, th, components.IconWSL, "No WSL instances found", "The host has no WSL distributions installed.")
 				}
 				return material.List(th, &p.list).Layout(gtx, len(nodes), func(gtx layout.Context, i int) layout.Dimensions {
 					return layout.Inset{Bottom: unit.Dp(10)}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
