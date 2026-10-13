@@ -157,7 +157,8 @@ func TurnOffWSLNode(ctx context.Context, wslName string) error {
 func TurnOnWSLNode(ctx context.Context, wslName string) error {
 	childCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
-	_, err := runSSH(childCtx, fmt.Sprintf("wsl -d %s", wslName))
+	// dbus-launch leaves a dbus-daemon running, which stops WSL from idling the distro out
+	_, err := runSSH(childCtx, fmt.Sprintf("wsl -d %s --exec dbus-launch true", wslName))
 	return err
 }
 
