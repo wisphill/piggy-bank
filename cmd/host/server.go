@@ -3,6 +3,7 @@ package server
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"fmt"
 	"net"
 	"os"
@@ -157,9 +158,29 @@ func TurnOffWSLNode(ctx context.Context, wslName string) error {
 func TurnOnWSLNode(ctx context.Context, wslName string) error {
 	childCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
-	// dbus-launch leaves a dbus-daemon running, which stops WSL from idling the distro out
-	_, err := runSSH(childCtx, fmt.Sprintf("wsl -d %s --exec dbus-launch true", wslName))
+	// dbus-launch leaves a dbus-daemon running so WSL doesn't idle the distro
+	// out. It must be started through WMI: Windows OpenSSH kills every process
+	// the session spawned when it closes, including that daemon.
+	wslCmd := fmt.Sprintf("wsl.exe -d %s --exec dbus-launch true", wslName)
+	script := fmt.Sprintf(`$ProgressPreference = 'SilentlyContinue'
+$r = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{ CommandLine = '%s' }
+if ($r.ReturnValue -ne 0) { [Console]::Error.WriteLine("Win32_Process.Create returned $($r.ReturnValue)"); exit 1 }`,
+		strings.ReplaceAll(wslCmd, "'", "''"))
+
+	_, err := runSSH(childCtx, "powershell -NoProfile -NonInteractive -EncodedCommand "+encodePowerShell(script))
 	return err
+}
+
+// encodePowerShell encodes a script for powershell -EncodedCommand, which
+// avoids quoting issues between ssh, the Windows shell and PowerShell.
+func encodePowerShell(script string) string {
+	u := utf16.Encode([]rune(script))
+	b := make([]byte, 2*len(u))
+	for i, c := range u {
+		b[2*i] = byte(c)
+		b[2*i+1] = byte(c >> 8)
+	}
+	return base64.StdEncoding.EncodeToString(b)
 }
 
 func PingOS(host string, timeout time.Duration) (bool, time.Duration) {
