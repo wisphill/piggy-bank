@@ -2,8 +2,9 @@ package main
 
 /*
 #cgo darwin CFLAGS: -x objective-c
-#cgo darwin LDFLAGS: -framework Cocoa
+#cgo darwin LDFLAGS: -framework Cocoa -framework QuartzCore
 #import <Cocoa/Cocoa.h>
+#import <QuartzCore/CAMetalLayer.h>
 #import <objc/runtime.h>
 
 // Con trỏ lưu lại hàm gốc của macOS
@@ -38,6 +39,17 @@ void forceActivateApp() {
     dispatch_async(dispatch_get_main_queue(), ^{
         [NSApp activateIgnoringOtherApps:YES];
     });
+}
+
+// Gio leaves the Metal layer untagged, so macOS shows its sRGB colours in
+// the display's native colour space (e.g. Display P3) and they look off.
+static void setLayerSRGB(uintptr_t layerRef) {
+    CALayer *layer = (__bridge CALayer *)(void *)layerRef;
+    if ([layer isKindOfClass:[CAMetalLayer class]]) {
+        CGColorSpaceRef cs = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
+        ((CAMetalLayer *)layer).colorspace = cs;
+        CGColorSpaceRelease(cs);
+    }
 }
 
 #include "center_mac.h"
@@ -176,6 +188,10 @@ func run(w *app.Window, host *state.HostState) error {
 		case app.DestroyEvent:
 			cancel()
 			return nil
+		case app.AppKitViewEvent:
+			if e.Layer != 0 {
+				C.setLayerSRGB(C.uintptr_t(e.Layer))
+			}
 		case app.FrameEvent:
 			gtx := app.NewContext(&ops, e)
 

@@ -102,7 +102,7 @@ func wslCard(gtx layout.Context, th *material.Theme, n state.WSLSnapshot) layout
 	}
 
 	gtx.Constraints.Min.X = gtx.Constraints.Max.X
-	return components.Card(gtx, func(gtx layout.Context) layout.Dimensions {
+	return components.Tile(gtx, func(gtx layout.Context) layout.Dimensions {
 		return layout.UniformInset(unit.Dp(14)).Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 			return layout.Flex{Alignment: layout.Middle}.Layout(gtx,
 				layout.Rigid(func(gtx layout.Context) layout.Dimensions {

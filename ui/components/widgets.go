@@ -62,6 +62,25 @@ func Card(gtx layout.Context, w layout.Widget) layout.Dimensions {
 	return Surface(gtx, 24, color.NRGBA{}, theme.Outline, w)
 }
 
+// Tile is a soft, slightly raised rounded container, like LocalSend's
+// "File" / "Folder" buttons: a pale fill with a faint drop shadow.
+func Tile(gtx layout.Context, w layout.Widget) layout.Dimensions {
+	macro := op.Record(gtx.Ops)
+	dims := w(gtx)
+	call := macro.Stop()
+
+	rr := min(gtx.Dp(12), dims.Size.X/2, dims.Size.Y/2)
+	shadow := func(dy int, a uint8) {
+		r := image.Rectangle{Min: image.Pt(0, dy), Max: dims.Size.Add(image.Pt(0, dy))}
+		paint.FillShape(gtx.Ops, color.NRGBA{A: a}, clip.UniformRRect(r, rr).Op(gtx.Ops))
+	}
+	shadow(gtx.Dp(1.5), 0x10)
+	shadow(gtx.Dp(1), 0x30)
+	paint.FillShape(gtx.Ops, theme.Tile, clip.UniformRRect(image.Rectangle{Max: dims.Size}, rr).Op(gtx.Ops))
+	call.Add(gtx.Ops)
+	return dims
+}
+
 // Icon lays out ic as a square of the given size.
 func Icon(gtx layout.Context, ic *widget.Icon, size unit.Dp, c color.NRGBA) layout.Dimensions {
 	sz := gtx.Dp(size)

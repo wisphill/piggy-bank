@@ -131,18 +131,15 @@ func (p *SettingsPage) applyStartAtLogin(enable bool) {
 
 func settingsSection(gtx layout.Context, th *material.Theme, title string, rows []settingRow) layout.Dimensions {
 	gtx.Constraints.Min.X = gtx.Constraints.Max.X
-	return components.Card(gtx, func(gtx layout.Context) layout.Dimensions {
+	return components.Tile(gtx, func(gtx layout.Context) layout.Dimensions {
 		return layout.Inset{Left: unit.Dp(18), Right: unit.Dp(18), Top: unit.Dp(14), Bottom: unit.Dp(6)}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 			children := []layout.FlexChild{
 				layout.Rigid(components.Text(th, 15, font.Bold, theme.Primary, title).Layout),
 				layout.Rigid(layout.Spacer{Height: unit.Dp(6)}.Layout),
 			}
-			for i, row := range rows {
-				if i > 0 {
-					children = append(children, layout.Rigid(components.Divider))
-				}
+			for _, row := range rows {
 				children = append(children, layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-					return layout.Inset{Top: unit.Dp(10), Bottom: unit.Dp(10)}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+					return layout.Inset{Top: unit.Dp(5), Bottom: unit.Dp(5)}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 						return layout.Flex{Alignment: layout.Middle}.Layout(gtx,
 							layout.Flexed(1, components.Text(th, 14, font.Normal, theme.Text, row.label).Layout),
 							layout.Rigid(row.value),
