@@ -119,9 +119,12 @@ func openGioWindow(host *state.HostState) {
 	winMutex.Lock()
 
 	// if the window is create, bring it to the front
-	if activeWin != nil {
-		activeWin.Perform(system.ActionRaise)
+	if w := activeWin; w != nil {
 		winMutex.Unlock()
+
+		// Perform blocks until the main thread runs it, and tray callbacks
+		// run on the main thread, so it must not be called synchronously here.
+		go w.Perform(system.ActionRaise)
 
 		// focus on the application, because this is the tray application
 		C.forceActivateApp()
@@ -189,6 +192,14 @@ func run(w *app.Window, host *state.HostState) error {
 			cancel()
 			return nil
 		case app.AppKitViewEvent:
+			if e.View == 0 {
+				// The window was closed. Gio only sends DestroyEvent once the view
+				// is deallocated, which may never happen, and a closed window
+				// cannot be raised again. Treat this as the end of the window and
+				// keep draining its events so Gio never blocks the main thread.
+				go drainEvents(w)
+				return nil
+			}
 			if e.Layer != 0 {
 				C.setLayerSRGB(C.uintptr_t(e.Layer))
 			}
@@ -199,6 +210,14 @@ func run(w *app.Window, host *state.HostState) error {
 
 			// draw frame to the gpu
 			e.Frame(gtx.Ops)
+		}
+	}
+}
+
+func drainEvents(w *app.Window) {
+	for {
+		if _, ok := w.Event().(app.DestroyEvent); ok {
+			return
 		}
 	}
 }
