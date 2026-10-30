@@ -2,9 +2,11 @@ package main
 
 /*
 #cgo darwin CFLAGS: -x objective-c
-#cgo darwin LDFLAGS: -framework Cocoa -framework QuartzCore
+#cgo darwin LDFLAGS: -framework Cocoa -framework QuartzCore -framework CoreVideo -framework IOKit
 #import <Cocoa/Cocoa.h>
 #import <QuartzCore/CAMetalLayer.h>
+#import <CoreVideo/CoreVideo.h>
+#import <IOKit/pwr_mgt/IOPMLib.h>
 #import <objc/runtime.h>
 
 // Con trỏ lưu lại hàm gốc của macOS
@@ -50,6 +52,26 @@ static void setLayerSRGB(uintptr_t layerRef) {
         ((CAMetalLayer *)layer).colorspace = cs;
         CGColorSpaceRelease(cs);
     }
+}
+
+// displayReady reports whether a display link can be created. Gio panics
+// when creating a window fails this way (e.g. while the display is asleep).
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+static int displayReady(void) {
+    CVDisplayLinkRef link = NULL;
+    if (CVDisplayLinkCreateWithActiveCGDisplays(&link) != kCVReturnSuccess || link == NULL) {
+        return 0;
+    }
+    CVDisplayLinkRelease(link);
+    return 1;
+}
+#pragma clang diagnostic pop
+
+// wakeDisplay declares user activity, which turns a sleeping display on.
+static void wakeDisplay(void) {
+    IOPMAssertionID id;
+    IOPMAssertionDeclareUserActivity(CFSTR("Piggy Bank window"), kIOPMUserActiveLocal, &id);
 }
 
 // restoreWindows un-minimizes the app's windows.
@@ -145,6 +167,23 @@ func main() {
 
 // openGioWindow bring the Gio window to the front
 func openGioWindow(host *state.HostState) {
+	if C.displayReady() == 0 {
+		// creating a window now would crash inside Gio; wake the display and
+		// retry once it is back
+		C.wakeDisplay()
+		go func() {
+			for range 10 {
+				time.Sleep(500 * time.Millisecond)
+				if C.displayReady() != 0 {
+					openGioWindow(host)
+					return
+				}
+			}
+			log.Println("No active display, cannot open the window")
+		}()
+		return
+	}
+
 	winMutex.Lock()
 
 	// if the window is create, bring it to the front
