@@ -52,6 +52,34 @@ static void setLayerSRGB(uintptr_t layerRef) {
     }
 }
 
+// restoreWindows un-minimizes the app's windows.
+static void restoreWindows(void) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        for (NSWindow *win in NSApp.windows) {
+            if (win.miniaturized) {
+                [win deminiaturize:nil];
+            }
+        }
+    });
+}
+
+// Gio stops its display link while a window is minimized and never restarts
+// it, so a restored window stops redrawing. Asking the view to redisplay goes
+// through Gio's draw path, which restarts the display link.
+static void installDeminiaturizeFix(void) {
+    [[NSNotificationCenter defaultCenter]
+        addObserverForName:NSWindowDidDeminiaturizeNotification
+                    object:nil
+                     queue:[NSOperationQueue mainQueue]
+                usingBlock:^(NSNotification *note) {
+        NSWindow *win = note.object;
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 100 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{
+            [win.contentView setNeedsDisplay:YES];
+            [win.contentView.layer setNeedsDisplay];
+        });
+    }];
+}
+
 #include "center_mac.h"
 */
 import "C"
@@ -90,6 +118,7 @@ func init() {
 func main() {
 	C.forceAccessoryForever()
 	C.installWindowCentering()
+	C.installDeminiaturizeFix()
 
 	appCtx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -124,6 +153,7 @@ func openGioWindow(host *state.HostState) {
 
 		// Perform blocks until the main thread runs it, and tray callbacks
 		// run on the main thread, so it must not be called synchronously here.
+		C.restoreWindows()
 		go w.Perform(system.ActionRaise)
 
 		// focus on the application, because this is the tray application
