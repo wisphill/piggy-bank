@@ -9,6 +9,7 @@ import (
 
 	"gioui.org/font"
 	"gioui.org/layout"
+	"gioui.org/op"
 	"gioui.org/op/clip"
 	"gioui.org/op/paint"
 	"gioui.org/unit"
@@ -91,11 +92,19 @@ func (s *AppShell) layoutSidebar(gtx layout.Context, th *material.Theme) layout.
 
 	selected := s.navSelection()
 	children := []layout.FlexChild{
-		layout.Rigid(layout.Spacer{Height: unit.Dp(60)}.Layout),
+		layout.Rigid(layout.Spacer{Height: unit.Dp(32)}.Layout),
 		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-			return layout.Center.Layout(gtx, components.Text(th, 30, font.Bold, theme.Text, "Piggy Bank").Layout)
+			// faux-bold: draw the bold text twice, offset by a fraction of a dp
+			return layout.Center.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+				lbl := components.Text(th, 32, font.Bold, theme.Text, "Piggy Bank")
+				dims := lbl.Layout(gtx)
+				off := op.Offset(image.Pt(gtx.Dp(0.8), 0)).Push(gtx.Ops)
+				lbl.Layout(gtx)
+				off.Pop()
+				return dims
+			})
 		}),
-		layout.Rigid(layout.Spacer{Height: unit.Dp(36)}.Layout),
+		layout.Rigid(layout.Spacer{Height: unit.Dp(32)}.Layout),
 	}
 	for _, e := range s.nav {
 		children = append(children, layout.Rigid(func(gtx layout.Context) layout.Dimensions {

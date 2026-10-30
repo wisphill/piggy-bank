@@ -3,6 +3,7 @@ package pages
 import (
 	"context"
 	"fmt"
+	"image"
 	"image/color"
 	"math"
 	"piggy-bank/ui/components"
@@ -31,6 +32,12 @@ type HostPage struct {
 	historyBtn widget.Clickable
 	infoBtn    widget.Clickable
 	powerBtn   widget.Clickable
+
+	// ring spin state: the ring speeds up while active and coasts to a stop
+	// otherwise
+	spinAngle float32
+	spinSpeed float32
+	lastFrame time.Time
 }
 
 func NewHostPage(host *state.HostState, nav Navigator) *HostPage {
@@ -48,8 +55,7 @@ func (p *HostPage) Layout(gtx layout.Context, th *material.Theme) layout.Dimensi
 	p.host.Mu.Lock()
 	name, desc, address := p.host.Name, p.host.Description, p.host.Address
 	online, rtt := p.host.IsOnline, p.host.PingRTT
-	busy, busyAction, busyLabel := p.host.Busy, p.host.BusyAction, p.host.BusyLabel
-	sshDown := p.host.SSHChecked && !p.host.SSHReady
+	busy, busyLabel := p.host.Busy, p.host.BusyLabel
 	p.host.Mu.Unlock()
 
 	if p.powerBtn.Clicked(gtx) && !busy {
@@ -60,27 +66,17 @@ func (p *HostPage) Layout(gtx layout.Context, th *material.Theme) layout.Dimensi
 		}
 	}
 
-	// red means "click to shut down", teal means "click to turn on"
-	haloColor, hint := theme.PowerOn, "Click the icon to turn on the server"
-	switch {
-	case busy && busyAction == state.HostActionShutdown:
-		haloColor, hint = theme.Danger, ""
-	case busy:
-		haloColor, hint = theme.PowerOn, ""
-	case online && sshDown:
-		haloColor, hint = theme.Danger, "Online, but SSH is not reachable yet, so shutdown may fail"
-	case online:
-		haloColor, hint = theme.Danger, "Click the icon to shut down the server"
+	// teal means online or busy, gray means offline
+	haloColor := theme.Offline
+	if busy || online {
+		haloColor = theme.PowerOn
 	}
-	if !busy && p.powerBtn.Hovered() {
+	if !busy && online && p.powerBtn.Hovered() {
 		haloColor = theme.WithAlpha(haloColor, 0xD8)
 	}
-	var rotation float32
-	if busy {
-		phase := float64(gtx.Now.UnixMilli()%haloSpinPeriod.Milliseconds()) / float64(haloSpinPeriod.Milliseconds())
-		rotation = float32(phase * 2 * math.Pi)
-		gtx.Execute(op.InvalidateCmd{})
-	}
+	// the ring spins while online and coasts to a stop on hover; offline it
+	// stays still, and it spins up as the server comes online
+	rotation := p.spin(gtx, busy || (online && !p.powerBtn.Hovered()))
 
 	statusText, statusColor := "Offline", theme.Danger
 	switch {
@@ -96,8 +92,14 @@ func (p *HostPage) Layout(gtx layout.Context, th *material.Theme) layout.Dimensi
 			return contentInset.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 				gtx.Constraints.Min = gtx.Constraints.Max
 				return layout.Flex{Axis: layout.Vertical, Alignment: layout.Middle}.Layout(gtx,
-					layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
-						return layout.Center.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+					// halo centre sits ~36% down the window, like LocalSend
+					layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+						top := int(float32(gtx.Constraints.Max.Y)*0.34) - gtx.Dp(75)
+						return layout.Dimensions{Size: image.Pt(0, max(top, 0))}
+					}),
+					layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+						gtx.Constraints.Min = image.Point{}
+						return func(gtx layout.Context) layout.Dimensions {
 							return layout.Flex{Axis: layout.Vertical, Alignment: layout.Middle}.Layout(gtx,
 								layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 									if busy {
@@ -107,12 +109,12 @@ func (p *HostPage) Layout(gtx layout.Context, th *material.Theme) layout.Dimensi
 										if !busy {
 											pointer.CursorPointer.Add(gtx.Ops)
 										}
-										return components.StatusHalo(gtx, 180, haloColor, rotation, components.IconPower)
+										return components.StatusHaloSVG(gtx, 150, haloColor, rotation, nil)
 									})
 								}),
 								layout.Rigid(layout.Spacer{Height: unit.Dp(28)}.Layout),
 								layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-									lbl := components.Text(th, 36, font.Normal, theme.Text, name)
+									lbl := components.Text(th, 44, font.Normal, theme.Text, name)
 									lbl.Alignment = text.Middle
 									lbl.MaxLines = 1
 									return lbl.Layout(gtx)
@@ -124,15 +126,14 @@ func (p *HostPage) Layout(gtx layout.Context, th *material.Theme) layout.Dimensi
 									lbl.MaxLines = 1
 									return lbl.Layout(gtx)
 								}),
-								layout.Rigid(layout.Spacer{Height: unit.Dp(14)}.Layout),
-								layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-									return statusChip(gtx, th, address, statusText, statusColor)
-								}),
-								layout.Rigid(layout.Spacer{Height: unit.Dp(12)}.Layout),
-								layout.Rigid(components.Text(th, 12, font.Normal, theme.TextMuted, hint).Layout),
 							)
-						})
+						}(gtx)
 					}),
+					layout.Flexed(1, layout.Spacer{}.Layout),
+					layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+						return statusChip(gtx, th, address, statusText, statusColor)
+					}),
+					layout.Rigid(layout.Spacer{Height: unit.Dp(44)}.Layout),
 				)
 			})
 		}),
@@ -154,17 +155,48 @@ func (p *HostPage) Layout(gtx layout.Context, th *material.Theme) layout.Dimensi
 	)
 }
 
+const (
+	spinAccel = 1.0 // fraction of top speed gained per second while active
+	spinDecel = 1.0 // fraction of top speed lost per second otherwise
+)
+
+// spin advances the ring rotation and returns the current angle in radians.
+func (p *HostPage) spin(gtx layout.Context, active bool) float32 {
+	now := gtx.Now
+	dt := float32(0)
+	if !p.lastFrame.IsZero() {
+		dt = min(float32(now.Sub(p.lastFrame).Seconds()), 0.1)
+	}
+	p.lastFrame = now
+
+	top := float32(2 * math.Pi / haloSpinPeriod.Seconds())
+	if active {
+		p.spinSpeed = min(p.spinSpeed+top*spinAccel*dt, top)
+	} else {
+		p.spinSpeed = max(p.spinSpeed-top*spinDecel*dt, 0)
+	}
+	p.spinAngle = float32(math.Mod(float64(p.spinAngle+p.spinSpeed*dt), 2*math.Pi))
+
+	if active || p.spinSpeed > 0 {
+		gtx.Execute(op.InvalidateCmd{})
+	} else {
+		p.lastFrame = time.Time{}
+	}
+	return p.spinAngle
+}
+
 func statusChip(gtx layout.Context, th *material.Theme, address, status string, c color.NRGBA) layout.Dimensions {
-	return components.Surface(gtx, 16, theme.Surface, theme.OutlineSoft, func(gtx layout.Context) layout.Dimensions {
-		return layout.Inset{Left: unit.Dp(14), Right: unit.Dp(14), Top: unit.Dp(7), Bottom: unit.Dp(7)}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+	gtx.Constraints.Min = image.Point{}
+	return components.Surface(gtx, 24, color.NRGBA{}, theme.Outline, func(gtx layout.Context) layout.Dimensions {
+		return layout.Inset{Left: unit.Dp(18), Right: unit.Dp(18), Top: unit.Dp(8), Bottom: unit.Dp(8)}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 			return layout.Flex{Alignment: layout.Middle}.Layout(gtx,
-				layout.Rigid(components.Text(th, 13, font.Medium, theme.TextMuted, address).Layout),
+				layout.Rigid(components.Text(th, 14, font.Medium, theme.Primary, address).Layout),
 				layout.Rigid(layout.Spacer{Width: unit.Dp(12)}.Layout),
 				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 					return components.Dot(gtx, 8, c)
 				}),
 				layout.Rigid(layout.Spacer{Width: unit.Dp(6)}.Layout),
-				layout.Rigid(components.Text(th, 13, font.Medium, c, status).Layout),
+				layout.Rigid(components.Text(th, 14, font.Medium, c, status).Layout),
 			)
 		})
 	})

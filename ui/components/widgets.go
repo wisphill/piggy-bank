@@ -39,10 +39,19 @@ func Surface(gtx layout.Context, radius unit.Dp, bg, border color.NRGBA, w layou
 		paint.FillShape(gtx.Ops, bg, clip.UniformRRect(rect, rr).Op(gtx.Ops))
 	}
 	if border.A > 0 {
+		// Stroke is centered on the path, so inset the path by half the width
+		// to keep the whole line inside the bounds (no clipped, jagged edge).
+		// Work in doubled coordinates and scale by 0.5 so the 1px line can be
+		// centered on a half-pixel inset, keeping it crisp and fully inside.
+		w := max(gtx.Dp(1), 1)
+		inner := image.Rect(w, w, dims.Size.X*2-w, dims.Size.Y*2-w)
+		r := max(rr*2-w, 0)
+		st := op.Affine(f32.Affine2D{}.Scale(f32.Pt(0, 0), f32.Pt(0.5, 0.5))).Push(gtx.Ops)
 		paint.FillShape(gtx.Ops, border, clip.Stroke{
-			Path:  clip.UniformRRect(rect, rr).Path(gtx.Ops),
-			Width: float32(gtx.Dp(1)),
+			Path:  clip.RRect{Rect: inner, NE: r, NW: r, SE: r, SW: r}.Path(gtx.Ops),
+			Width: float32(2 * w),
 		}.Op())
+		st.Pop()
 	}
 	call.Add(gtx.Ops)
 	return dims
@@ -50,7 +59,7 @@ func Surface(gtx layout.Context, radius unit.Dp, bg, border color.NRGBA, w layou
 
 // Card is a white rounded container with a soft outline.
 func Card(gtx layout.Context, w layout.Widget) layout.Dimensions {
-	return Surface(gtx, 12, theme.Surface, theme.OutlineSoft, w)
+	return Surface(gtx, 24, color.NRGBA{}, theme.Outline, w)
 }
 
 // Icon lays out ic as a square of the given size.
@@ -150,10 +159,10 @@ func NavItem(gtx layout.Context, th *material.Theme, btn *widget.Clickable, ic *
 		pointer.CursorPointer.Add(gtx.Ops)
 		gtx.Constraints.Min.X = gtx.Constraints.Max.X
 
-		return layout.Inset{Left: unit.Dp(14), Top: unit.Dp(6), Bottom: unit.Dp(6)}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+		return layout.Inset{Left: unit.Dp(12), Top: unit.Dp(6), Bottom: unit.Dp(6)}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 			return layout.Flex{Alignment: layout.Middle}.Layout(gtx,
 				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-					pill := image.Pt(gtx.Dp(64), gtx.Dp(36))
+					pill := image.Pt(gtx.Dp(56), gtx.Dp(32))
 					var bg color.NRGBA
 					switch {
 					case selected:
@@ -171,13 +180,9 @@ func NavItem(gtx layout.Context, th *material.Theme, btn *widget.Clickable, ic *
 					stack.Pop()
 					return layout.Dimensions{Size: pill}
 				}),
-				layout.Rigid(layout.Spacer{Width: unit.Dp(14)}.Layout),
+				layout.Rigid(layout.Spacer{Width: unit.Dp(12)}.Layout),
 				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-					weight := font.Medium
-					if selected {
-						weight = font.Bold
-					}
-					return Text(th, 14, weight, theme.Text, label).Layout(gtx)
+					return Text(th, 14, font.Medium, theme.Text, label).Layout(gtx)
 				}),
 			)
 		})

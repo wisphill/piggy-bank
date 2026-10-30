@@ -46,8 +46,6 @@ import "C"
 import (
 	"context"
 	"fmt"
-	"image"
-	"image/color"
 	"log"
 	"piggy-bank/assets/fonts"
 	"piggy-bank/config"
@@ -60,12 +58,8 @@ import (
 
 	"gioui.org/app"
 	"gioui.org/io/system"
-	"gioui.org/layout"
 	"gioui.org/op"
-	"gioui.org/op/clip"
 	"gioui.org/unit"
-	"gioui.org/widget"
-	"gioui.org/widget/material"
 
 	"github.com/gogpu/systray"
 )
@@ -125,10 +119,11 @@ func openGioWindow(host *state.HostState) {
 	// if not, create a new window
 	w := new(app.Window)
 	w.Option(
-		app.Decorated(false),
-		app.Size(unit.Dp(960), unit.Dp(620)),
-		app.MinSize(unit.Dp(960), unit.Dp(620)),
-		app.MaxSize(unit.Dp(960), unit.Dp(620)),
+		app.Decorated(true),
+		app.Title("Piggy Bank"),
+		app.Size(unit.Dp(900), unit.Dp(560)),
+		app.MinSize(unit.Dp(720), unit.Dp(465)),
+		app.MaxSize(unit.Dp(1440), unit.Dp(930)),
 	)
 
 	activeWin = w
@@ -152,8 +147,6 @@ func openGioWindow(host *state.HostState) {
 func run(w *app.Window, host *state.HostState) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-
-	var quitButton widget.Clickable
 
 	th := theme.New(fonts.NewShaper())
 	var ops op.Ops
@@ -186,49 +179,12 @@ func run(w *app.Window, host *state.HostState) error {
 		case app.FrameEvent:
 			gtx := app.NewContext(&ops, e)
 
-			// the sidebar and content extend under the transparent title bar
 			shell.Layout(gtx, th)
-
-			if quitButton.Clicked(gtx) {
-				w.Perform(system.ActionClose)
-			}
-
-			drawCustomTitleBar(gtx, th, &quitButton)
 
 			// draw frame to the gpu
 			e.Frame(gtx.Ops)
 		}
 	}
-}
-
-func drawCustomTitleBar(gtx layout.Context, th *material.Theme, quitBtn *widget.Clickable) {
-	height := gtx.Dp(unit.Dp(32))
-	bounds := image.Rect(0, 0, gtx.Constraints.Max.X, height)
-
-	// Cho phép kéo cửa sổ từ phần nền trống
-	area := clip.Rect(bounds).Push(gtx.Ops)
-	system.ActionInputOp(system.ActionMove).Add(gtx.Ops)
-	area.Pop()
-
-	// 2. Dùng Stack để quản lý vị trí các phần tử
-	layout.Stack{}.Layout(gtx,
-		// Red quit button
-		layout.Stacked(func(gtx layout.Context) layout.Dimensions {
-			return layout.Inset{
-				Top:  unit.Dp(10),
-				Left: unit.Dp(10),
-			}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-				size := gtx.Dp(unit.Dp(12))
-				gtx.Constraints.Min = image.Point{X: size, Y: size}
-				gtx.Constraints.Max = gtx.Constraints.Min
-
-				btn := material.Button(th, quitBtn, "")
-				btn.Background = color.NRGBA{R: 255, G: 95, B: 86, A: 255} // Màu đỏ macOS
-				btn.CornerRadius = unit.Dp(6)                              // Bo tròn hoàn toàn
-				return btn.Layout(gtx)
-			})
-		}),
-	)
 }
 
 func fetchServerUI(ctx context.Context, host *state.HostState, w *app.Window) {
