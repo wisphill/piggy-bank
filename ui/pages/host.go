@@ -56,6 +56,7 @@ func (p *HostPage) Layout(gtx layout.Context, th *material.Theme) layout.Dimensi
 	name, desc, address := p.host.Name, p.host.Description, p.host.Address
 	online, rtt := p.host.IsOnline, p.host.PingRTT
 	busy, busyLabel := p.host.Busy, p.host.BusyLabel
+	tailscaleChecked, tailscaleReady := p.host.TailscaleChecked, p.host.TailscaleReady
 	p.host.Mu.Unlock()
 
 	if p.powerBtn.Clicked(gtx) && !busy {
@@ -130,6 +131,18 @@ func (p *HostPage) Layout(gtx layout.Context, th *material.Theme) layout.Dimensi
 						}(gtx)
 					}),
 					layout.Flexed(1, layout.Spacer{}.Layout),
+					layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+						if !tailscaleChecked || tailscaleReady {
+							return layout.Dimensions{}
+						}
+						return components.Text(th, 13, font.Medium, theme.Danger, "Tailscale unavailable — connect it to reach this host").Layout(gtx)
+					}),
+					layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+						if !tailscaleChecked || tailscaleReady {
+							return layout.Dimensions{}
+						}
+						return layout.Spacer{Height: unit.Dp(12)}.Layout(gtx)
+					}),
 					layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 						return statusChip(gtx, th, address, statusText, statusColor)
 					}),

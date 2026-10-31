@@ -24,22 +24,67 @@ type TerminalScript struct {
 
 type HostState struct {
 	// protected by mutex
-	Mu          sync.Mutex
-	Name        string
-	Description string
-	Address     string
-	IsOnline    bool
-	PingRTT     time.Duration
-	Wsls        []*WSLState
-	Busy        bool // a power action is in progress
-	BusyAction  HostAction
-	BusyLabel   string // e.g. "Shutting down…"
-	SSHChecked  bool   // at least one SSH attempt has finished
-	SSHReady    bool   // the last SSH attempt succeeded
-	SSHError    string // why the last SSH attempt failed
+	Mu                sync.Mutex
+	Name              string
+	Description       string
+	Address           string
+	IsOnline          bool
+	PingRTT           time.Duration
+	Wsls              []*WSLState
+	Busy              bool // a power action is in progress
+	BusyAction        HostAction
+	BusyLabel         string // e.g. "Shutting down…"
+	SSHChecked        bool   // at least one SSH attempt has finished
+	SSHReady          bool   // the last SSH attempt succeeded
+	SSHError          string // why the last SSH attempt failed
+	TailscaleChecked  bool   // at least one Tailscale check has finished
+	TailscaleCLIReady bool   // the Tailscale CLI can be started
+	TailscaleReady    bool   // Tailscale reports BackendState "Running"
+	TailscaleBackend  string // the BackendState returned by tailscale status --json
+	TailscaleError    string // why the last Tailscale check failed
 
 	Activity     *ActivityLog
 	ServerSignal chan bool
+}
+
+// TailscaleLoop keeps the app's network prerequisite state current even when
+// no window is open. Checking the local CLI does not contact the remote host.
+func (host *HostState) TailscaleLoop(ctx context.Context) {
+	ticker := time.NewTicker(15 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		checkCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		health := server.CheckTailscale(checkCtx)
+		cancel()
+		if ctx.Err() != nil {
+			return
+		}
+
+		host.Mu.Lock()
+		wasReady, wasChecked := host.TailscaleReady, host.TailscaleChecked
+		host.TailscaleChecked = true
+		host.TailscaleCLIReady = health.CLIAvailable
+		host.TailscaleReady = health.Connected
+		host.TailscaleBackend = health.BackendState
+		host.TailscaleError = health.Error
+		host.Mu.Unlock()
+
+		if wasChecked && wasReady != health.Connected {
+			if !health.Connected {
+				host.Activity.Log("Tailscale is unavailable: " + health.Error)
+			} else {
+				host.Activity.Log("Tailscale connected")
+				host.Activity.HideToastAfter(2 * time.Second)
+			}
+		}
+
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+	}
 }
 
 type WSLState struct {

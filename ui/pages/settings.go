@@ -51,11 +51,26 @@ func (p *SettingsPage) Layout(gtx layout.Context, th *material.Theme) layout.Dim
 
 	p.host.Mu.Lock()
 	name, address, online := p.host.Name, p.host.Address, p.host.IsOnline
+	tailscaleChecked, tailscaleCLIReady := p.host.TailscaleChecked, p.host.TailscaleCLIReady
+	tailscaleReady, tailscaleBackend := p.host.TailscaleReady, p.host.TailscaleBackend
 	p.host.Mu.Unlock()
 
 	status, statusColor := "Offline", theme.Danger
 	if online {
 		status, statusColor = "Online", theme.Success
+	}
+
+	tailscaleCLI, tailscaleCLIColor := "Checking…", theme.TextMuted
+	tailscaleConnection, tailscaleConnectionColor := "Checking…", theme.TextMuted
+	if tailscaleChecked {
+		tailscaleCLI, tailscaleCLIColor = "Unavailable", theme.Danger
+		if tailscaleCLIReady {
+			tailscaleCLI, tailscaleCLIColor = "Available", theme.Success
+		}
+		tailscaleConnection, tailscaleConnectionColor = "Not connected", theme.Danger
+		if tailscaleReady {
+			tailscaleConnection, tailscaleConnectionColor = "Connected", theme.Success
+		}
 	}
 
 	token, tokenColor := "Not set", theme.Danger
@@ -86,6 +101,11 @@ func (p *SettingsPage) Layout(gtx layout.Context, th *material.Theme) layout.Dim
 			{"Address", text(address, theme.TextMuted)},
 			{"Status", text(status, statusColor)},
 		}},
+		{"Tailscale", []settingRow{
+			{"CLI", text(tailscaleCLI, tailscaleCLIColor)},
+			{"Tailnet connection", text(tailscaleConnection, tailscaleConnectionColor)},
+			{"Backend state", text(orUnknown(tailscaleBackend), theme.TextMuted)},
+		}},
 		{"Configuration", []settingRow{
 			{"Config file", text(configPath, theme.TextMuted)},
 			{"Telegram bot token", text(token, tokenColor)},
@@ -108,6 +128,13 @@ func (p *SettingsPage) Layout(gtx layout.Context, th *material.Theme) layout.Dim
 			}),
 		)
 	})
+}
+
+func orUnknown(value string) string {
+	if value == "" {
+		return "Unknown"
+	}
+	return value
 }
 
 func (p *SettingsPage) applyStartAtLogin(enable bool) {

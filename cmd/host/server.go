@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -24,6 +25,68 @@ var timeRegex = regexp.MustCompile(`(?i)time[=<]\s*([\d.]+)\s*ms`)
 type wslNodeStatus struct {
 	Name   string
 	Status string
+}
+
+type tailscaleStatus struct {
+	BackendState string `json:"BackendState"`
+}
+
+// TailscaleHealth separates whether the CLI is available from whether it is
+// connected to a tailnet. Connected is true only for BackendState "Running".
+type TailscaleHealth struct {
+	CLIAvailable bool
+	Connected    bool
+	BackendState string
+	Error        string
+}
+
+// CheckTailscale verifies that the Tailscale CLI is available and reads its
+// JSON status. A running backend is required before the SSH host can be
+// reached through its Tailscale DNS name.
+func CheckTailscale(ctx context.Context) TailscaleHealth {
+	binary, err := exec.LookPath("tailscale")
+	if err != nil {
+		// GUI applications do not necessarily inherit the shell PATH. The
+		// macOS Tailscale app ships its CLI at this well-known bundle path.
+		binary, err = exec.LookPath("/Applications/Tailscale.app/Contents/MacOS/Tailscale")
+		if err != nil {
+			return TailscaleHealth{Error: "Tailscale CLI is not installed or unavailable"}
+		}
+	}
+
+	out, err := exec.CommandContext(ctx, binary, "status", "--json").CombinedOutput()
+	if err != nil {
+		message := strings.TrimSpace(string(out))
+		if message != "" {
+			return TailscaleHealth{CLIAvailable: true, Error: "Tailscale is unavailable: " + message}
+		}
+		return TailscaleHealth{CLIAvailable: true, Error: fmt.Sprintf("run Tailscale status: %v", err)}
+	}
+
+	status, err := parseTailscaleStatus(out)
+	if err != nil {
+		return TailscaleHealth{CLIAvailable: true, Error: err.Error()}
+	}
+
+	health := TailscaleHealth{CLIAvailable: true, BackendState: status.BackendState}
+	if status.BackendState == "Running" {
+		health.Connected = true
+		return health
+	}
+	if status.BackendState == "" {
+		health.Error = "Tailscale did not report a connection state"
+	} else {
+		health.Error = fmt.Sprintf("Tailscale is %s; connect it to access the tailnet", strings.ToLower(status.BackendState))
+	}
+	return health
+}
+
+func parseTailscaleStatus(out []byte) (tailscaleStatus, error) {
+	var status tailscaleStatus
+	if err := json.Unmarshal(out, &status); err != nil {
+		return tailscaleStatus{}, fmt.Errorf("read Tailscale status: %w", err)
+	}
+	return status, nil
 }
 
 // resolve host to the ipv4

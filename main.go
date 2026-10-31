@@ -178,6 +178,7 @@ func main() {
 	}
 
 	go host.HandleServerSignal(appCtx)
+	go host.TailscaleLoop(appCtx)
 
 	tray := systray.New()
 	uitray.SetupTray(appCtx, host, tray, func() {
