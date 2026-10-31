@@ -102,6 +102,30 @@ static void installDeminiaturizeFix(void) {
     }];
 }
 
+// installCloseOnResignKey closes the window like the close button when it stops
+// being the key window (the user clicked another app or window). This watches
+// NSWindow directly because Gio only reports focus loss while its view is the
+// first responder.
+static void installCloseOnResignKey(void) {
+    [[NSNotificationCenter defaultCenter]
+        addObserverForName:NSWindowDidResignKeyNotification
+                    object:nil
+                     queue:[NSOperationQueue mainQueue]
+                usingBlock:^(NSNotification *note) {
+        NSWindow *win = note.object;
+        if (![win.title isEqualToString:@"Piggy Bank"] || win.miniaturized) {
+            return;
+        }
+        // Defer so a window that is being re-keyed (e.g. tray re-activation)
+        // is not closed; only close if it is still not key.
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 150 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{
+            if (win.visible && !win.keyWindow && !win.miniaturized) {
+                [win performClose:nil];
+            }
+        });
+    }];
+}
+
 #include "center_mac.h"
 */
 import "C"
@@ -141,6 +165,7 @@ func main() {
 	C.forceAccessoryForever()
 	C.installWindowCentering()
 	C.installDeminiaturizeFix()
+	C.installCloseOnResignKey()
 
 	appCtx, cancel := context.WithCancel(context.Background())
 	defer cancel()

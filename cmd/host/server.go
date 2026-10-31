@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -13,6 +14,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 	"unicode/utf16"
 )
@@ -53,9 +55,37 @@ const (
 	sshPort   = "2223"
 )
 
+// CheckSSHPort dials the SSH port, returning an error that says whether the
+// name doesn't resolve, the host is down/blocked, or the port is closed.
+func CheckSSHPort(ctx context.Context, timeout time.Duration) error {
+	host := sshTarget[strings.Index(sshTarget, "@")+1:]
+	addr := net.JoinHostPort(host, sshPort)
+
+	d := net.Dialer{Timeout: timeout}
+	conn, err := d.DialContext(ctx, "tcp", addr)
+	if err != nil {
+		var dnsErr *net.DNSError
+		var netErr net.Error
+		switch {
+		case errors.As(err, &dnsErr):
+			return fmt.Errorf("cannot resolve %s (is Tailscale connected?)", host)
+		case errors.Is(err, syscall.ECONNREFUSED):
+			return fmt.Errorf("%s is up but nothing listens on port %s (is sshd running?)", host, sshPort)
+		case errors.As(err, &netErr) && netErr.Timeout():
+			return fmt.Errorf("timed out connecting to %s: host is off/asleep or a firewall blocks the port", addr)
+		}
+		return fmt.Errorf("cannot connect to %s: %w", addr, err)
+	}
+	return conn.Close()
+}
+
 // runSSH runs a command on the Windows host. Failures carry ssh's stderr so a
 // connection error is never mistaken for empty output.
 func runSSH(ctx context.Context, remote string) ([]byte, error) {
+	if err := CheckSSHPort(ctx, 3*time.Second); err != nil {
+		return nil, fmt.Errorf("ssh %s: %w", sshTarget, err)
+	}
+
 	cmd := exec.CommandContext(ctx, "ssh",
 		"-o", "BatchMode=yes",
 		"-o", "ConnectTimeout=5",
