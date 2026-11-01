@@ -10,6 +10,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"path/filepath"
 	executor "piggy-bank/cmd/execute_commands"
 	"regexp"
 	"runtime"
@@ -37,6 +38,7 @@ type TailscaleHealth struct {
 	CLIAvailable bool
 	Connected    bool
 	BackendState string
+	CLIPath      string
 	Error        string
 }
 
@@ -44,31 +46,26 @@ type TailscaleHealth struct {
 // JSON status. A running backend is required before the SSH host can be
 // reached through its Tailscale DNS name.
 func CheckTailscale(ctx context.Context) TailscaleHealth {
-	binary, err := exec.LookPath("tailscale")
+	binary, err := findTailscaleCLI()
 	if err != nil {
-		// GUI applications do not necessarily inherit the shell PATH. The
-		// macOS Tailscale app ships its CLI at this well-known bundle path.
-		binary, err = exec.LookPath("/Applications/Tailscale.app/Contents/MacOS/Tailscale")
-		if err != nil {
-			return TailscaleHealth{Error: "Tailscale CLI is not installed or unavailable"}
-		}
+		return TailscaleHealth{Error: "Tailscale CLI is not installed or unavailable"}
 	}
 
 	out, err := exec.CommandContext(ctx, binary, "status", "--json").CombinedOutput()
 	if err != nil {
 		message := strings.TrimSpace(string(out))
 		if message != "" {
-			return TailscaleHealth{CLIAvailable: true, Error: "Tailscale is unavailable: " + message}
+			return TailscaleHealth{CLIAvailable: true, CLIPath: binary, Error: "Tailscale is unavailable: " + message}
 		}
-		return TailscaleHealth{CLIAvailable: true, Error: fmt.Sprintf("run Tailscale status: %v", err)}
+		return TailscaleHealth{CLIAvailable: true, CLIPath: binary, Error: fmt.Sprintf("run Tailscale status: %v", err)}
 	}
 
 	status, err := parseTailscaleStatus(out)
 	if err != nil {
-		return TailscaleHealth{CLIAvailable: true, Error: err.Error()}
+		return TailscaleHealth{CLIAvailable: true, CLIPath: binary, Error: err.Error()}
 	}
 
-	health := TailscaleHealth{CLIAvailable: true, BackendState: status.BackendState}
+	health := TailscaleHealth{CLIAvailable: true, CLIPath: binary, BackendState: status.BackendState}
 	if status.BackendState == "Running" {
 		health.Connected = true
 		return health
@@ -79,6 +76,28 @@ func CheckTailscale(ctx context.Context) TailscaleHealth {
 		health.Error = fmt.Sprintf("Tailscale is %s; connect it to access the tailnet", strings.ToLower(status.BackendState))
 	}
 	return health
+}
+
+// findTailscaleCLI searches locations a Finder-launched macOS application
+// cannot rely on through PATH. The integration launcher is preferred over the
+// executable inside Tailscale.app because it has the required CLI setup.
+func findTailscaleCLI() (string, error) {
+	candidates := []string{
+		"tailscale",
+		"/usr/local/bin/tailscale",
+		"/opt/homebrew/bin/tailscale",
+	}
+	if home, err := os.UserHomeDir(); err == nil {
+		candidates = append(candidates, filepath.Join(home, "Applications", "Tailscale.app", "Contents", "MacOS", "Tailscale"))
+	}
+	candidates = append(candidates, "/Applications/Tailscale.app/Contents/MacOS/Tailscale")
+
+	for _, candidate := range candidates {
+		if binary, err := exec.LookPath(candidate); err == nil {
+			return binary, nil
+		}
+	}
+	return "", exec.ErrNotFound
 }
 
 func parseTailscaleStatus(out []byte) (tailscaleStatus, error) {

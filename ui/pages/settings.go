@@ -52,7 +52,7 @@ func (p *SettingsPage) Layout(gtx layout.Context, th *material.Theme) layout.Dim
 	p.host.Mu.Lock()
 	name, address, online := p.host.Name, p.host.Address, p.host.IsOnline
 	tailscaleChecked, tailscaleCLIReady := p.host.TailscaleChecked, p.host.TailscaleCLIReady
-	tailscaleReady, tailscaleBackend := p.host.TailscaleReady, p.host.TailscaleBackend
+	tailscaleReady, tailscaleBackend, tailscaleCLIPath := p.host.TailscaleReady, p.host.TailscaleBackend, p.host.TailscaleCLIPath
 	p.host.Mu.Unlock()
 
 	status, statusColor := "Offline", theme.Danger
@@ -103,6 +103,7 @@ func (p *SettingsPage) Layout(gtx layout.Context, th *material.Theme) layout.Dim
 		}},
 		{"Tailscale", []settingRow{
 			{"CLI", text(tailscaleCLI, tailscaleCLIColor)},
+			{"CLI path", text(orUnknown(tailscaleCLIPath), theme.TextMuted)},
 			{"Tailnet connection", text(tailscaleConnection, tailscaleConnectionColor)},
 			{"Backend state", text(orUnknown(tailscaleBackend), theme.TextMuted)},
 		}},

@@ -41,6 +41,7 @@ type HostState struct {
 	TailscaleCLIReady bool   // the Tailscale CLI can be started
 	TailscaleReady    bool   // Tailscale reports BackendState "Running"
 	TailscaleBackend  string // the BackendState returned by tailscale status --json
+	TailscaleCLIPath  string // executable used for tailscale status --json
 	TailscaleError    string // why the last Tailscale check failed
 
 	Activity     *ActivityLog
@@ -67,6 +68,7 @@ func (host *HostState) TailscaleLoop(ctx context.Context) {
 		host.TailscaleCLIReady = health.CLIAvailable
 		host.TailscaleReady = health.Connected
 		host.TailscaleBackend = health.BackendState
+		host.TailscaleCLIPath = health.CLIPath
 		host.TailscaleError = health.Error
 		host.Mu.Unlock()
 
