@@ -20,8 +20,9 @@ var iconBytes []byte
 
 func SetupTray(ctx context.Context, host *state.HostState, tray *systray.SystemTray, onClickAdmin func()) {
 	menu := systray.NewMenu()
-	tailscaleItem := menu.Add("Tailscale: checking…", nil)
-	tailscaleItem.SetDisabled(true)
+	// This is a read-only status indicator. Its native checkbox mark shows a
+	// connected tailnet without needing a separate icon.
+	tailscaleItem := menu.AddCheckbox("Tailscale: Checking…", false, func() {})
 	menu.AddSeparator()
 	menu.Add("Open", onClickAdmin)
 
@@ -73,17 +74,18 @@ func watchTailscaleStatus(ctx context.Context, host *state.HostState, tray *syst
 		checked, cliReady, ready, message := host.TailscaleChecked, host.TailscaleCLIReady, host.TailscaleReady, host.TailscaleError
 		host.Mu.Unlock()
 
-		label, tooltip := "Tailscale: checking…", "Piggy Bank\nTailscale: checking…"
+		label, tooltip := "Tailscale: Checking…", "Piggy Bank\nTailscale: checking…"
 		if checked && ready {
-			label, tooltip = "Tailscale: connected", "Piggy Bank\nTailscale: connected"
+			label, tooltip = "Tailscale: Connected", "Piggy Bank\nTailscale: connected"
 		} else if checked && !cliReady {
-			label = "Tailscale CLI: unavailable"
+			label = "Tailscale CLI: Unavailable"
 			tooltip = "Piggy Bank\nTailscale CLI unavailable: " + message
 		} else if checked {
-			label = "Tailscale: not connected"
+			label = "Tailscale: Not connected"
 			tooltip = "Piggy Bank\nTailscale unavailable: " + message
 		}
 		item.SetLabel(label)
+		item.SetChecked(checked && ready)
 		tray.SetTooltip(tooltip)
 
 		select {
